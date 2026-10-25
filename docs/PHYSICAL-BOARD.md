@@ -1,0 +1,25 @@
+# Printed physical board and real setup state
+
+The board now separates printed map artwork from actual campaign state. Country names are texture print on the country surfaces in the 3D scene; they follow the physical board's perspective, orientation, fold and lighting. They are not camera-facing SVG text or billboard sprites. The board uses a thin dark frame, parchment sea, darker borders and the familiar yellow/orange/blue/red/green/purple continent palette. The implementation remains original geometry and print artwork, rather than a claim to reproduce every edition-specific illustration.
+
+## Official reference and setup scope
+
+The parent research pass inspected the official Hasbro B7404 board/manual imagery and reported the physical printed labels, thin board, continent colors and grounded pieces used for this correction:
+
+- [Official product/board image](https://www.hasbro.com/common/productimages/en_US/2C7C6F5250569047F5DDEB8AC273BA4C/E3F63CB997C74515BB3145062D730805.jpg)
+- [Official B7404 instructions](https://instructions.hasbro.com/api/download/B7404_en-us_risk-game.pdf): board imagery at PDF page index 1; Classic claiming at PDF index 6/printed page 12. Card-dealt allocation in Secret Mission is a different documented setup.
+- [Traditional Risk instructions](https://www.hasbro.com/common/instruct/risk.pdf): alternating claims and remaining initial placements before combat.
+
+This executor's own fetches were blocked with CONNECT 403; the retrieval record is preserved separately with release artifacts. The official visual inspection came from the parent research pass. No claim of an independent line-by-line printed-edition rules audit is made.
+
+The existing game intentionally uses **quick automatic setup** with classic world-domination play, not an interactive claiming phase. That choice is labeled before starting. The server assigns all 42 territories, places their initial armies and allocates the remaining starting allowance only after an actual start. Allowances stay 35/30/25/20 per player for 3/4/5/6 players. Traditional manual claiming is described in RULES.md and is not silently substituted with another edition's setup.
+
+A fresh welcome screen, private lobby, or table after leaving has no assigned armies, counters or reserve figures. Rejoining an existing campaign renders that campaign's real authoritative ownership and armies. Opening/canceling setup or resetting the camera does not initialize or reset a game. No seeded demo campaign is passed to the board.
+
+## Camera interaction
+
+Mouse and one-finger orbit use a captured, viewport-normalized gesture anchor. Screen-right swivels the far board edge right; dragging up raises the viewpoint. These directions remain consistent at different board rotations. Small movements remain clicks/taps; pinches and drags do not select territories or send orders. Pinch-to-one-finger transitions rebase the gesture rather than jumping.
+
+The camera radius stays fixed during ordinary orbit/tilt, avoiding automatic zoom changes while the pointer moves. Resize and explicit reset refit deliberately. Zooming out and reset remain available when an intentionally rotated or zoomed board extends beyond the viewport. Text stays printed at every angle; use zoom and orbit to inspect a region, or the accessible territory finder for exact names and counts.
+
+Classic mechanics, multiplayer authority, card privacy, room persistence and schema remain unchanged. Existing DB data, migrations and audience must be preserved by the parent when updating the existing Site.

@@ -67,8 +67,10 @@ async function joinLobby(page: Page, code: string, name: string) {
   await expect(page.locator('.lobby-player')).toHaveCount(2);
 }
 const territory = (page: Page, id: string) => {
-  const name = TERRITORIES.find(item => item.id === id)!.name;
-  return page.locator('.board3d-labels [role=button], .world-map-svg [role=button]').and(page.getByRole('button', { name: new RegExp(`^${name},`) }));
+  // Camera rotation/zoom can legitimately hide off-screen countries from the
+  // accessibility tree. Hit checks still need their stable DOM entry to skip
+  // them rather than waiting for an off-screen accessible button to appear.
+  return page.locator('.board3d-labels [role=button], .world-map-svg [role=button]').and(page.locator(`[data-territory="${id}"]`));
 };
 async function territoryState(page: Page) {
   return page.locator('.board3d-labels [role=button], .world-map-svg [role=button]').evaluateAll(elements => elements.map(element => element.getAttribute('aria-label') || ''));

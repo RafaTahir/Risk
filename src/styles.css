@@ -300,3 +300,6 @@ html[data-motion=reduced] *,html[data-motion=reduced] *::before,html[data-motion
 @keyframes battle-pair { from { opacity: .6; transform: translateY(3px); } to { opacity: 1; transform: none; } }
 @media(max-width:700px) { .battle-summary { column-gap: 8px; padding-left: 10px; } .battle-title b { max-width: 110px; font-size: 10px; } .battle-toast .die { width: 18px; height: 18px; padding: 2px; } .battle-dismiss { min-width: 28px; margin-left: 2px; } .battle-losses { font-size: 10px; } }
 @media(max-height:520px) and (min-width:600px) { .battle-toast { top: 66px; left: auto; right: 88px; transform: none; } .battle-summary { grid-template-columns: 1fr; } .battle-toast-dice { display: none; } .battle-title b { max-width: 190px; } }
+.setup-caption { margin-top: 9px; color: #d5d0ba; font-size: 10px; text-align: center; line-height: 1.5; text-shadow: 0 1px 6px #000; }
+@media(max-width:600px) { .setup-caption { max-width: 300px; margin: 8px auto 0; font-size: 9px; } }
+@media(max-height:520px) and (min-width:600px) { .setup-caption { margin-top: 5px; font-size: 9px; } }

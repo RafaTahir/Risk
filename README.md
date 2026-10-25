@@ -90,7 +90,7 @@ npm run dev:worker
 
 The local Worker serves the production UI and real D1 API together on internal port3001. Local D1 files are under `.worker-local/d1`, excluded from Git and release packages. The browser discovers `/api/transport` and switches automatically; there is no hardcoded external API endpoint.
 
-Run `RISK_TEST_BASE_URL=http://127.0.0.1:3001 RISK_TEST_HTTP=1 npm run test:browser` for the Worker browser flows. `npm test` includes75 automated checks across the rules/AI, tactical-affordance, socket, concurrency/security, and actual workerd/D1 suites. Node browser runs execute four shared cases and skip ten HTTP-only cases; Worker runs execute all14.
+Run `RISK_TEST_BASE_URL=http://127.0.0.1:3001 RISK_TEST_HTTP=1 npm run test:browser` for the Worker browser flows. `npm test` includes84 automated checks across the rules/AI, tactical-affordance, socket, concurrency/security, and actual workerd/D1 suites. Node browser runs execute four shared cases and skip fourteen HTTP-only cases; Worker runs execute all18.
 
 Deployment inputs are `dist/` browser assets, `dist-worker/worker.js`, logical D1 binding `DB`, and `migrations/0001_rooms.sql`. The parent task has the Sites tools and verified manifest schema; this child produces the tested source/artifacts but does not provision or publish the site. See [the complete Worker guide](docs/SITES.md) and [current release handoff](docs/RELEASE-HANDOFF.md).
 
@@ -105,3 +105,7 @@ The current interface is a full-window physical board with hinged opening, shiny
 ## Tactical clarity and optional teaching
 
 Legal source diamonds, destination rings and a camera-aligned route preview make the next action visible. The dock previews resulting army counts; optional phase lessons and paired-dice battle reports explain the rules without covering the table during play. Tactical contrast, reduced motion, safe preview cancellation and rapid-tap protection preserve player control. See [research, scope and validation](docs/PLAYER-EXPERIENCE.md). Existing installations keep their DB and apply no new migration for this interface update.
+
+## Printed physical board and empty pregame
+
+Country names are printed on the actual 3D country surfaces and follow the board perspective, rotation and lighting. The board uses a thin dark frame, parchment sea and classic continent colors. Mouse/touch orbit follows screen-space drag direction at a fixed camera radius; pinch and zoom remain available. The welcome screen and private lobby contain no mock armies or reserve pieces. Explicitly labeled quick auto setup assigns territories and starting armies only when play begins; rejoining renders the actual saved campaign. See [the official reference, setup and input details](docs/PHYSICAL-BOARD.md).
