@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
 import type { GameState } from '../../shared/types';
 import { CONTINENTS, TERRITORIES } from '../../shared/world';
+import { boardContour } from '../lib/boardContours';
 import './WorldMap.css';
 
 interface WorldMapProps {
@@ -10,6 +11,9 @@ interface WorldMapProps {
   target: string | null;
   validTargets: string[];
   eligibleSources?: string[];
+  folded?: boolean;
+  foldRevision?: number;
+  onFoldStateChange?: (state: { folded: boolean; transitioning: boolean }) => void;
   onSelect: (id: string) => void;
   interactive?: boolean;
 }
@@ -22,7 +26,8 @@ const shortNames: Record<string,string[]> = {
   'middle-east':['MIDDLE EAST'], 'western-australia':['WESTERN','AUSTRALIA'],
   'eastern-australia':['EASTERN','AUSTRALIA'], 'new-guinea':['NEW GUINEA'],
 };
-export default function WorldMap({ game, selected, target, validTargets, eligibleSources = [], onSelect, interactive = true }: WorldMapProps) {
+export default function WorldMap({ game, selected, target, validTargets, eligibleSources = [], folded = false, foldRevision, onFoldStateChange, onSelect, interactive = true }: WorldMapProps) {
+  useEffect(() => { onFoldStateChange?.({ folded, transitioning: false }); }, [folded, foldRevision, onFoldStateChange]);
   const uid = useId().replaceAll(':','');
   const ocean = `${uid}-ocean`; const grid = `${uid}-grid`;
   const host = useRef<HTMLDivElement>(null);
@@ -34,6 +39,11 @@ export default function WorldMap({ game, selected, target, validTargets, eligibl
   const pointers = useRef(new Map<number,{x:number;y:number}>());
   const gesture = useRef({x:0,y:0,distance:0,moved:false});
   const suppressClick = useRef(false);
+  useEffect(() => {
+    const svg=host.current?.querySelector<SVGSVGElement>('.world-map-svg');
+    const ids=[...pointers.current.keys()]; pointers.current.clear(); suppressClick.current=true;
+    ids.forEach(id=>{if(svg?.hasPointerCapture(id))svg.releasePointerCapture(id);});
+  }, [folded, foldRevision]);
   const bounds = (next:typeof view) => {
     const currentSize = sizeRef.current;
     const zoom=Math.max(1,Math.min(3,next.zoom));
@@ -69,13 +79,14 @@ export default function WorldMap({ game, selected, target, validTargets, eligibl
     return () => { observer.disconnect(); container.removeEventListener('wheel',wheel); };
   },[]);
   const begin = (event:ReactPointerEvent<SVGSVGElement>) => {
-    if(event.button!==0) return;
+    if(folded || event.button!==0) return;
     pointers.current.set(event.pointerId,{x:event.clientX,y:event.clientY});
     const points=[...pointers.current.values()];
     if(points.length===1) { suppressClick.current=false; gesture.current={x:event.clientX,y:event.clientY,distance:0,moved:false}; }
     else { const [a,b]=points; gesture.current={x:(a.x+b.x)/2,y:(a.y+b.y)/2,distance:Math.hypot(a.x-b.x,a.y-b.y),moved:true}; suppressClick.current=true; }
   };
   const move = (event:ReactPointerEvent<SVGSVGElement>) => {
+    if(folded) return;
     if(!pointers.current.has(event.pointerId)) return;
     pointers.current.set(event.pointerId,{x:event.clientX,y:event.clientY});
     const points=[...pointers.current.values()];
@@ -111,10 +122,12 @@ export default function WorldMap({ game, selected, target, validTargets, eligibl
     routeLine=`M${ax} ${ay} L${bx} ${by}`;
     routeArrow=`M${bx} ${by} L${bx-ux*9*labelScale-uy*4.5*labelScale} ${by-uy*9*labelScale+ux*4.5*labelScale} L${bx-ux*9*labelScale+uy*4.5*labelScale} ${by-uy*9*labelScale-ux*4.5*labelScale} Z`;
   }
-  return <div className="world-map" ref={host}>
-    <svg viewBox={`${view.x-width/2} ${view.y-height/2} ${width} ${height}`} role="group" aria-label="World conquest map, 42 territories" className="world-map-svg" onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end}
+  return <div className="world-map" ref={host} data-fold-state={folded ? 'folded' : 'open'}>
+    {folded && <div className="world-map-folded-cover" role="img" aria-label="Folded board in 2D mode"><b>RISK</b><span>Folded tactical map</span></div>}
+    <svg style={{visibility: folded ? 'hidden' : undefined, pointerEvents: folded ? 'none' : undefined}} aria-hidden={folded} viewBox={`${view.x-width/2} ${view.y-height/2} ${width} ${height}`} role="group" aria-label="World conquest map, 42 territories" className="world-map-svg" onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end}
       onClickCapture={event=>{if(suppressClick.current && event.detail!==0){event.preventDefault();event.stopPropagation();}}}
       onKeyDown={event=>{
+        if(folded) return;
         if(event.key==='+' || event.key==='='){event.preventDefault();zoom(.5);}
         else if(event.key==='-'){event.preventDefault();zoom(-.5);}
         else if(event.key==='0'){event.preventDefault();reset();}
@@ -144,6 +157,7 @@ export default function WorldMap({ game, selected, target, validTargets, eligibl
         <path d="M393 122 Q439 89 490 125 M412 370 Q453 318 505 337 M511 265 L514 311 M610 259 L618 302 M879 381 L864 427 M920 433 L978 420 M947 449 L947 480 M989 434 L1002 479 M653 439 L697 456 M647 385 L703 451 M104 127 Q50 114 35 128 M1065 128 Q1046 109 975 128"/>
       </g>
       {TERRITORIES.map(t=>{
+        const contour = boardContour(t.id).path;
         const territory = game?.territories[t.id];
         const player = game?.players.find(p=>p.id === territory?.owner);
         const continent = CONTINENTS.find(c=>c.id === t.continent)!;
@@ -151,14 +165,14 @@ export default function WorldMap({ game, selected, target, validTargets, eligibl
         const ownerColor = player?.color ?? continent.color;
         const labels = shortNames[t.id] ?? [t.name.toUpperCase()];
         return <g key={t.id} className={`map-territory ${active?'is-selected':''} ${targeted?'is-target':''} ${valid?'is-valid':''} ${source?'eligible-source':''} ${interactive?'is-interactive':''}`} data-territory={t.id} data-selected={active || targeted} data-eligible-source={source} data-valid-target={valid}
-          style={{'--territory-color':continent.color,'--owner-color':ownerColor} as CSSProperties} tabIndex={interactive?0:-1} role="button"
+          style={{'--territory-color':continent.color,'--owner-color':ownerColor} as CSSProperties} tabIndex={interactive && !folded?0:-1} role="button"
           aria-label={`${t.name}${player?`, ${player.name}, ${territory?.armies} armies`:''}${active?', selected origin':''}${targeted?', selected destination':''}${valid?', available target':''}${source?', available origin':''}`}
-          aria-pressed={active || targeted} aria-disabled={!interactive} onClick={()=>interactive && onSelect(t.id)}
-          onKeyDown={e=>{if(interactive && (e.key==='Enter' || e.key===' ')){e.preventDefault();onSelect(t.id);}}}>
+          aria-pressed={active || targeted} aria-disabled={!interactive || folded} onClick={()=>interactive && !folded && onSelect(t.id)}
+          onKeyDown={e=>{if(interactive && !folded && (e.key==='Enter' || e.key===' ')){e.preventDefault();onSelect(t.id);}}}>
           <title>{t.name}{player?` · ${player.name} · ${territory?.armies} armies`:''}</title>
-          {(active || targeted) && <path d={t.path} fill="none" stroke="#f9e2a9" strokeWidth="9" opacity=".45"/>}
-          <path className="map-land" d={t.path}/>
-          <path className="map-land-edge" d={t.path}/>
+          {(active || targeted) && <path d={contour} fill="none" stroke="#f9e2a9" strokeWidth="9" opacity=".45"/>}
+          <path className="map-land" d={contour}/>
+          <path className="map-land-edge" d={contour}/>
           <g transform={`translate(${t.x} ${t.y}) scale(${labelScale})`}>
           <text className="map-territory-name" x="0" y={-(territory?10:2)-(labels.length-1)*4}>
             {labels.map((line,i)=><tspan key={line} x="0" dy={i===0?0:9}>{line}</tspan>)}
@@ -178,7 +192,7 @@ export default function WorldMap({ game, selected, target, validTargets, eligibl
         <text x="0" y="-45">N</text><text x="0" y="55">S</text><text x="-48" y="4">W</text><text x="48" y="4">E</text>
       </g>
     </svg>
-    <div className="world-map-controls" aria-label="Map view controls">
+    <div className="world-map-controls" style={{display:folded ? 'none' : undefined}} aria-label="Map view controls">
       <details className="world-map-pan"><summary aria-label="Pan map">↔</summary><div>
         <button type="button" aria-label="Pan west" onClick={()=>changeView({...viewRef.current,x:viewRef.current.x-90})}>←</button>
         <button type="button" aria-label="Pan north" onClick={()=>changeView({...viewRef.current,y:viewRef.current.y-70})}>↑</button>

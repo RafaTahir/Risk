@@ -2,6 +2,7 @@ import { test, expect, type APIRequestContext, type Page, type TestInfo } from '
 import { writeFile } from 'node:fs/promises';
 import type { GameState, RoomState, Session } from '../shared/types';
 import { TERRITORIES } from '../shared/world';
+import { openBoardIfNeeded } from './boardPresentation';
 
 test.skip(process.env.RISK_TEST_HTTP !== '1', 'Physical board checks use the real durable HTTP Worker.');
 type Reply = { ok: boolean; error?: string; session?: Session; state?: RoomState };
@@ -70,6 +71,7 @@ async function humanRoom(request: APIRequestContext, count = 3) {
 async function openSeat(page: Page, seat: Session) {
   await page.addInitScript(value => sessionStorage.setItem('risk-world-command-session', JSON.stringify(value)), seat);
   await page.goto('/');
+  await openBoardIfNeeded(page);
   await expect(page.locator('.campaign')).toBeVisible();
   await sceneReady(page);
 }
@@ -121,6 +123,7 @@ test('pregame and lobby stay empty; explicit quick setup, reload, cancellation a
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   const actions = observeActions(page);
   await page.goto('/');
+  await openBoardIfNeeded(page);
   await expectEmptyBoard(page);
   await capture(page, info, 'empty-pregame');
   const host = await freshLobby(page, 'Table host');
@@ -140,6 +143,7 @@ test('pregame and lobby stay empty; explicit quick setup, reload, cancellation a
   for (const [index, item] of TERRITORIES.entries()) await expect(territory(page, item.id)).toHaveAttribute('aria-label', new RegExp(`^${expectedLabels[index]}`));
   await capture(page, info, 'started');
   await page.reload();
+  await openBoardIfNeeded(page);
   await expect(page.locator('.campaign')).toBeVisible();
   await sceneReady(page);
   const resumed = (await request.post('/api/poll', { data: { session: host } })).json() as Promise<Reply>;

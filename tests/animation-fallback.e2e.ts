@@ -1,6 +1,7 @@
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
 import type { RoomState, Session } from '../shared/types';
 import { TERRITORIES } from '../shared/world';
+import { openBoardIfNeeded } from './boardPresentation';
 
 test.skip(process.env.RISK_TEST_HTTP !== '1', 'Animation recovery checks use real HTTP Worker rooms.');
 type Reply = { ok: boolean; error?: string; session?: Session; state?: RoomState };
@@ -28,6 +29,7 @@ async function room(request: APIRequestContext) {
 async function openSeat(page: Page, actor: Session) {
   await page.addInitScript(seat => sessionStorage.setItem('risk-world-command-session', JSON.stringify(seat)), actor);
   await page.goto('/');
+  await openBoardIfNeeded(page);
   await expect(page.locator('.campaign')).toBeVisible();
   await expect(page.getByTestId('turn-status')).toContainText('Your turn');
 }

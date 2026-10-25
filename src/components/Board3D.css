@@ -2,3 +2,4 @@
 
 
 .board3d-route-preview{pointer-events:none;filter:drop-shadow(0 1px 2px #06141d)}.board3d-route-line{fill:none;stroke:#fff0bd;stroke-width:2;stroke-linecap:round;stroke-dasharray:5 4}.board3d-route-arrow{fill:#fff0bd;stroke:#192f36;stroke-width:1;stroke-linejoin:round}.tactical-contrast .board3d-route-line{stroke:#fff;stroke-width:3}.tactical-contrast .board3d-route-arrow{fill:#fff}
+.board3d[data-fold-state=folded] .board3d-territory-label,.board3d[data-fold-state=folding] .board3d-territory-label,.board3d[data-fold-state=opening] .board3d-territory-label{pointer-events:none}

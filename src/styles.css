@@ -303,3 +303,9 @@ html[data-motion=reduced] *,html[data-motion=reduced] *::before,html[data-motion
 .setup-caption { margin-top: 9px; color: #d5d0ba; font-size: 10px; text-align: center; line-height: 1.5; text-shadow: 0 1px 6px #000; }
 @media(max-width:600px) { .setup-caption { max-width: 300px; margin: 8px auto 0; font-size: 9px; } }
 @media(max-height:520px) and (min-width:600px) { .setup-caption { margin-top: 5px; font-size: 9px; } }
+.board-fold-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; min-width: 44px; padding: 9px 13px; border: 1px solid #e0c28c70; border-radius: 9px; background: #182019ee; color: #efddb8; font-size: 11px; box-shadow: 0 3px 18px #0003; }
+.board-fold-toggle:hover { background: #293122; border-color: #f4d69d; }
+.fold-caption { position: absolute; left: 50%; bottom: max(28px,env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 34; width: min(420px,calc(100% - 32px)); text-align: center; pointer-events: none; text-shadow: 0 2px 12px #000; }
+.fold-caption b { display: block; font: 500 27px var(--serif); color: #eee2c7; }
+.fold-caption span { display: block; margin-top: 7px; color: #c7c8b6; font-size: 11px; line-height: 1.6; }
+@media(max-width:600px) { .board-fold-toggle { padding: 8px; } .board-fold-toggle > span { display: none; } .hud-actions { gap: 5px; } .hud-actions .connection:not(.offline) { display: none; } .turn-status { max-width: 175px; } .fold-caption { bottom: max(25px,env(safe-area-inset-bottom)); } .fold-caption b { font-size: 25px; } }

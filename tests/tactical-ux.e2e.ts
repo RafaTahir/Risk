@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
 import type { GameState, RoomState, Session } from '../shared/types';
 import { TERRITORIES, TERRITORY_BY_ID } from '../shared/world';
+import { openBoardIfNeeded } from './boardPresentation';
 
 // These scenarios supplement the complete multiplayer/browser suite. The first
 // uses only real Worker rooms and commands; later presentation fixtures are
@@ -35,6 +36,7 @@ async function humanRoom(request: APIRequestContext) {
 async function openSeat(page: Page, seat: Session) {
   await page.addInitScript(value => sessionStorage.setItem('risk-world-command-session', JSON.stringify(value)), seat);
   await page.goto('/');
+  await openBoardIfNeeded(page);
   await expect(page.locator('.campaign')).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByTestId('turn-status')).toContainText('Your turn');
@@ -186,6 +188,7 @@ test('mobile: optional phase help dismisses and reopens, contextual rules and co
     await page.getByRole('button', { name: 'Close dialog', exact: true }).tap();
     await expect(page.locator('.tabletop-app')).toHaveClass(/tactical-contrast/);
     await page.reload();
+    await openBoardIfNeeded(page);
     await expect(page.locator('.campaign')).toBeVisible();
     await expect(page.locator('.tabletop-app')).toHaveClass(/tactical-contrast/);
     const sources = eligible(state.game!, actor.playerId);

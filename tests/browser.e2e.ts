@@ -1,10 +1,11 @@
 import { test, expect, type Page, type Locator, type TestInfo } from '@playwright/test';
 import { TERRITORIES } from '../shared/world';
 import type { RoomState, Session } from '../shared/types';
+import { openBoardIfNeeded } from './boardPresentation';
 
 const http = process.env.RISK_TEST_HTTP === '1';
 const screenshot = (name: string) => `/tmp/risk-${process.env.RISK_TEST_SCREENSHOT_PREFIX || (http ? 'worker-' : '')}${name}.png`;
-type BoardStats = { frames: number; drawCalls: number; triangles: number; renderer: string; zoom: number; rotation: number; tilt: number; opening: boolean };
+type BoardStats = { frames: number; drawCalls: number; triangles: number; renderer: string; zoom: number; rotation: number; tilt: number; opening: boolean; foldProgress: number; leafAngles: number[]; foldTransitioning: boolean };
 const stats = (page: Page) => page.evaluate(() => (window as unknown as { __riskBoardStats: BoardStats }).__riskBoardStats);
 const errors = (page: Page) => {
   const found: string[] = [];
@@ -52,14 +53,14 @@ async function newPrivateSetup(page: Page, name: string) {
   await page.getByRole('tab', { name: 'Multiplayer', exact: true }).click();
 }
 async function privateLobby(page: Page, name: string) {
-  await page.goto('/'); await newPrivateSetup(page, name);
+  await page.goto('/'); await openBoardIfNeeded(page); await newPrivateSetup(page, name);
   await page.getByRole('button', { name: 'Create private room', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Players', exact: true })).toBeVisible();
   await expect(page.locator('.lobby-player')).toHaveCount(1);
   return page.locator('.room-code span').innerText();
 }
 async function joinLobby(page: Page, code: string, name: string) {
-  await page.goto('/'); await newPrivateSetup(page, name);
+  await page.goto('/'); await openBoardIfNeeded(page); await newPrivateSetup(page, name);
   await page.getByRole('button', { name: 'Join a room', exact: true }).click();
   await page.getByLabel('ROOM CODE', { exact: true }).fill(code);
   await page.getByRole('button', { name: 'Join the table', exact: true }).click();
@@ -161,7 +162,7 @@ async function touchGesture(page: Page, start: { x: number; y: number }[], end: 
 }
 
 test('viewport tabletop, real camera controls, fold, idle budget and accessible 2D view', async ({ page }, info) => {
-  const failures = errors(page); const network = traffic(page); await page.goto('/');
+  const failures = errors(page); const network = traffic(page); await page.goto('/'); await openBoardIfNeeded(page);
   await expect(page.locator('.board3d canvas')).toBeVisible();
   await expect.poll(async () => (await stats(page))?.drawCalls).toBeGreaterThan(0);
   await page.waitForTimeout(800);
@@ -186,11 +187,19 @@ test('viewport tabletop, real camera controls, fold, idle budget and accessible 
   await expect.poll(() => center(anchor)).not.toEqual(preTiltPosition);
   const prePanPosition = await center(anchor); await page.getByRole('button', { name: 'Pan east', exact: true }).click();
   await expect.poll(() => center(anchor)).not.toEqual(prePanPosition);
-  const preFold = await stats(page); await page.getByRole('button', { name: 'Open board', exact: true }).click();
-  await expect.poll(async () => (await stats(page)).opening).toBe(true);
-  await expect.poll(async () => (await stats(page)).frames).toBeGreaterThan(preFold.frames);
-  await page.waitForTimeout(800);
-  const folded = await stats(page); await page.waitForTimeout(300); expect((await stats(page)).frames).toBe(folded.frames);
+  const preFold = await stats(page);
+  await page.getByRole('button', { name: 'Fold board', exact: true }).click();
+  await expect(page.getByRole('main', { name: 'Risk tabletop', exact: true })).toHaveAttribute('data-board-state', 'folded');
+  const closed = await stats(page);
+  expect(closed.foldProgress).toBeCloseTo(1);
+  expect(closed.leafAngles[1]).toBeCloseTo(-Math.PI);
+  expect(closed.foldTransitioning).toBe(false);
+  await openBoardIfNeeded(page);
+  const unfolded = await stats(page);
+  expect(unfolded.foldProgress).toBeCloseTo(0);
+  expect(unfolded.leafAngles[1]).toBeCloseTo(0);
+  expect(unfolded.frames).toBeGreaterThan(preFold.frames);
+  await page.waitForTimeout(300); expect((await stats(page)).frames).toBe(unfolded.frames);
   await page.getByRole('button', { name: 'Reset table view', exact: true }).click();
   await boardView(page, '2d');
   await expect(page.locator('.world-map-svg')).toBeVisible(); await expect(page.locator('canvas')).toHaveCount(0);
@@ -220,7 +229,7 @@ test('private seats, reload and rejoin, board selection and complete human turn'
     await expect(host.locator('.lobby-player')).toHaveCount(3);
     await host.getByRole('button', { name: 'Begin world conquest', exact: true }).click();
     await expect(guest.locator('.campaign')).toBeVisible(); await expect(guest.getByRole('dialog')).toHaveCount(0);
-    await guest.reload(); await expect(guest.locator('.campaign')).toBeVisible();
+    await guest.reload(); await openBoardIfNeeded(guest); await expect(guest.locator('.campaign')).toBeVisible();
     const originalSeat = await session(guest);
     await tableMenu(guest, 'Leave table');
     await expect(guest.getByRole('dialog', { name: 'Leave the table?' })).toBeVisible();
@@ -320,7 +329,7 @@ test('private seats, reload and rejoin, board selection and complete human turn'
 test('mobile emulation keeps the board visible and supports touch selection, orbit and pinch', async ({ browser, baseURL }, info) => {
   const context = await browser.newContext({ baseURL, viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true, reducedMotion: 'reduce' });
   try {
-    const page = await context.newPage(); const failures = errors(page); const network = traffic(page); await page.goto('/');
+    const page = await context.newPage(); const failures = errors(page); const network = traffic(page); await page.goto('/'); await openBoardIfNeeded(page);
     await expect(page.locator('.board3d canvas')).toBeVisible(); await expectBoardViewport(page, .65);
     await capture(page, info, 'mobile');
     await page.getByRole('button', { name: 'Play solo', exact: true }).tap();
@@ -391,7 +400,7 @@ test('WebGL unavailable uses a functional accessible full-viewport map', async (
   const browser = await playwright.chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', args: ['--no-sandbox', '--disable-webgl'] });
   try {
     const page = await browser.newPage(); const pageErrors: string[] = []; const network = traffic(page); page.on('pageerror', error => pageErrors.push(error.message));
-    await page.goto(baseURL!); await expect(page.getByText('2D map · WebGL unavailable')).toBeVisible();
+    await page.goto(baseURL!); await openBoardIfNeeded(page); await expect(page.getByText('2D map · WebGL unavailable')).toBeVisible();
     await expect(page.locator('.world-map-svg')).toBeVisible(); await expectBoardViewport(page, .7);
     await page.getByRole('button', { name: 'Play solo', exact: true }).click(); await expect(page.locator('.campaign')).toBeVisible();
     await territory(page, 'north-africa').click(); await expect(territory(page, 'north-africa')).toHaveAttribute('aria-pressed', 'true');

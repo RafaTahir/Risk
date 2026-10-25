@@ -1,5 +1,6 @@
 import { CONTINENTS, TERRITORIES, type TerritoryDefinition } from '../../shared/world';
 import type { GameState } from '../../shared/types';
+import { boardContour } from '../lib/boardContours';
 
 // Original printed artwork, informed by Hasbro's B7404 board. These colors
 // describe the physical map and never replace ownership or game rules.
@@ -52,7 +53,7 @@ export function paintNames(context: CanvasRenderingContext2D, scale: number, cle
   context.fillStyle = contrast ? '#0b0c09' : '#251f18'; context.textAlign = 'center'; context.textBaseline = 'middle';
   for (const territory of TERRITORIES) {
     const label = surfaceLabel(territory);
-    context.save(); context.clip(new Path2D(territory.path)); context.translate(label.x, label.y); context.rotate(label.angle || 0);
+    context.save(); context.clip(new Path2D(boardContour(territory.id).path)); context.translate(label.x, label.y); context.rotate(label.angle || 0);
     context.font = `700 ${label.size}px Georgia, serif`;
     const lineHeight = label.size * 1.05;
     label.lines.forEach((line, index) => { const y=(index - (label.lines.length - 1) / 2) * lineHeight; if(contrast){context.strokeStyle='#0b0c09';context.lineWidth=.25;context.strokeText(line,0,y);}context.fillText(line, 0, y); });
