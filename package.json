@@ -1,0 +1,46 @@
+{
+  "name": "risk-world-command",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx server/index.ts",
+    "build": "tsc --noEmit && vite build",
+    "start": "NODE_ENV=production tsx server/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:browser": "playwright test",
+    "build:worker": "node scripts/build-worker.mjs",
+    "build:sites": "npm run build && npm run build:worker",
+    "dev:worker": "node scripts/dev-worker.mjs",
+    "test:worker": "vitest run tests/worker.test.ts tests/worker-security.test.ts tests/worker-runtime.test.ts",
+    "build:sites:standalone": "npm run build:sites && node scripts/build-sites-standalone.mjs",
+    "dev:sites:standalone": "RISK_STANDALONE=1 node scripts/dev-worker.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/dm-sans": "^5.3.0",
+    "@fontsource/cormorant-garamond": "^5.3.0",
+    "express": "^5.1.0",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.51.0",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.186.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "esbuild": "^0.28.2",
+    "miniflare": "^4.20260730.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0",
+    "vitest": "^3.0.0"
+  }
+}
