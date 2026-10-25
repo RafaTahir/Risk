@@ -24,7 +24,7 @@
 .cdock button:not(:disabled):hover { background-color: #ffffff0a; }
 .cdock button:focus-visible, .cdock input:focus-visible { outline: 2px solid var(--gold, #e7bd76); outline-offset: 3px; }
 .cdock svg { flex-shrink: 0; }
-.cdock-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 40px; }
+.cdock-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px; min-height: 40px; }
 .cdock-overview { flex: 1; min-width: 0; }
 .cdock-phase { display: flex; align-items: center; gap: 10px; min-width: 0; margin-bottom: 5px; line-height: 1.3; font-size: 10px; }
 .cdock-phase > span:first-child { color: var(--gold, #e7bd76); font-weight: 650; letter-spacing: 1.1px; text-transform: uppercase; }
@@ -38,6 +38,9 @@
 .cdock-placeholder { overflow: hidden; color: #aaa99e; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .cdock-prompt { margin: 0; color: #efeadf; font-size: 13px; line-height: 1.45; }
 .cdock-hint { margin: 5px 0 0; color: #bdb7a8; font-size: 11px; line-height: 1.4; }
+.cdock-action-preview { flex: 1 0 100%; min-width: 0; margin: 0; color: #ccc6b9; font-size: 11px; line-height: 1.45; }
+.cdock-action-preview.is-ready { color: #e8d9b9; }
+.cdock-action-preview.is-ready::before { content: ''; display: inline-block; width: 4px; height: 4px; margin-right: 6px; border-radius: 50%; background: #e7bd76; vertical-align: middle; }
 .cdock-tools { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .cdock .cdock-icon { color: #b6b6aa; }
 .cdock .cdock-cards { gap: 7px; min-width: 53px; padding: 0 10px; border: 1px solid #e7bd7621; color: #dbc49d; }
@@ -68,10 +71,14 @@
 .cdock-strength { display: inline-flex; align-items: center; gap: 6px; margin-left: 14px; color: #d5c8ae; font-size: 11px; white-space: nowrap; }
 .cdock-strength b { color: #f2e0ba; font-size: 16px; font-variant-numeric: tabular-nums; }
 .cdock-strength > span { color: #aaa99b; font-size: 10px; }
+.tactical-contrast .cdock { border-color: #f4dba8; background: #111713; }
+.tactical-contrast .cdock-phase-detail, .tactical-contrast .cdock-placeholder, .tactical-contrast .cdock-action-preview { color: #f2ebdb; }
+.tactical-contrast .cdock button:disabled { opacity: .55; }
+.tactical-contrast .cdock-army-badge { border-color: #d6c59b; color: #fff5dc; }
 
 @media (max-width: 600px) {
   .cdock { bottom: max(12px, env(safe-area-inset-bottom)); width: calc(100% - 24px); padding: 10px; border-radius: 12px; }
-  .cdock-heading { gap: 6px; }
+  .cdock-heading { gap: 4px 6px; }
   .cdock-phase { gap: 7px; font-size: 9px; }
   .cdock-phase-detail { font-size: 9px; }
   .cdock-route { gap: 6px; }
@@ -81,6 +88,7 @@
   .cdock-placeholder { font-size: 11px; }
   .cdock-prompt { font-size: 12px; }
   .cdock-hint { font-size: 10px; }
+  .cdock-action-preview { font-size: 10px; }
   .cdock-tools { gap: 0; }
   .cdock .cdock-cards { min-width: 44px; gap: 5px; padding: 0 7px; }
   .cdock .cdock-cards-required { flex-direction: column; gap: 2px; padding: 4px 7px; }
@@ -108,8 +116,10 @@
 @media (max-height: 520px) and (min-width: 650px) {
   .cdock-active { display: flex; align-items: center; gap: 13px; width: min(790px, calc(100% - 30px)); bottom: max(10px, env(safe-area-inset-bottom)); padding: 8px 12px; }
   .cdock-active .cdock-heading { flex: 1; min-width: 190px; }
+  .cdock-active .cdock-action-preview { font-size: 9px; }
   .cdock-active .cdock-controls { flex: 0 1 auto; margin-top: 0; gap: 6px; }
   .cdock-active .cdock-tools .cdock-cards { display: none; }
+  .cdock-active .cdock-tools .cdock-help { display: none; }
   .cdock-active .cdock-territory b { max-width: 125px; font-size: 11px; }
   .cdock-active .cdock-placeholder { max-width: 110px; font-size: 10px; }
   .cdock-active .cdock-primary { padding: 0 12px; }

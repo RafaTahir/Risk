@@ -8,7 +8,7 @@ import WorldMap from './WorldMap';
 import './Board3D.css';
 
 export interface BoardMotion { id: string; type: 'attack' | 'move' | 'deploy' | 'conquest'; from?: string; to: string; count: number; color: string }
-interface Props { game: GameState | null; selected: string | null; target: string | null; validTargets: string[]; onSelect: (id: string) => void; interactive?: boolean; quality: 'low' | 'high'; reducedMotion: boolean; motion: BoardMotion | null; onMotionEnd?: () => void }
+interface Props { game: GameState | null; selected: string | null; target: string | null; validTargets: string[]; eligibleSources?: string[]; onSelect: (id: string) => void; interactive?: boolean; quality: 'low' | 'high'; reducedMotion: boolean; motion: BoardMotion | null; onMotionEnd?: () => void }
 interface TableView { zoom: number; x: number; y: number; rotation: number; tilt: number }
 interface BoardApi { update: () => void; animate: () => void; view: () => void; open: () => void; hit: (x: number, y: number) => string | undefined; pan: (dx: number, dy: number) => {x: number; y: number} }
 const point = (x: number, y: number, z = 0) => new THREE.Vector3(x - 550, 320 - y, z);
@@ -31,6 +31,9 @@ export default function Board3D(props: Props) {
   const [panMode, setPanMode] = useState(false);
   const labelElements = useRef(new Map<string, SVGGElement>());
   const oceanElements = useRef(new Map<string, SVGTextElement>());
+  const routeElement = useRef<SVGGElement>(null);
+  const routeLine = useRef<SVGPathElement>(null);
+  const routeArrow = useRef<SVGPathElement>(null);
   const pointers = useRef(new Map<number, {x: number; y: number; startX: number; startY: number}>());
   const gesture = useRef({dragged:false, suppressUntil:0, distance:0, x:0, y:0, originTerritory:null as string|null});
   const changeView = (next: TableView | ((previous: TableView) => TableView)) => {
@@ -160,6 +163,22 @@ export default function Board3D(props: Props) {
         if(element) { element.setAttribute('transform',`translate(${(position.x+1)*width/2} ${(1-position.y)*height/2}) scale(${labelScale})`); element.setAttribute('visibility',Math.abs(position.x)>1.15 || Math.abs(position.y)>1.15 || position.z>1 ? 'hidden':'visible'); }
       });
       oceanLabels.forEach(t => { const position=point(t.x,t.y,3).applyMatrix4(halfFor(t.x-550).matrixWorld).project(camera),element=oceanElements.current.get(t.id); if(element) {element.setAttribute('x',String((position.x+1)*width/2));element.setAttribute('y',String((1-position.y)*height/2));} });
+      const p = current.current;
+      const origin = TERRITORIES.find(t => t.id === p.selected), destination = TERRITORIES.find(t => t.id === p.target);
+      const legal = origin && destination && (p.validTargets.includes(destination.id) || (p.game?.phase === 'occupy' && p.game.occupation?.from === origin.id && p.game.occupation.to === destination.id));
+      // The Pacific seam is a wrapped sea route. A straight arrow through the whole world would be misleading.
+      if (!legal || Math.abs(origin.x - destination.x) > 550) routeElement.current?.setAttribute('visibility','hidden');
+      else {
+        const from = point(origin.x,origin.y,41).applyMatrix4(halfFor(origin.x-550).matrixWorld).project(camera);
+        const to = point(destination.x,destination.y,41).applyMatrix4(halfFor(destination.x-550).matrixWorld).project(camera);
+        const ax=(from.x+1)*width/2, ay=(1-from.y)*height/2, bx=(to.x+1)*width/2, by=(1-to.y)*height/2;
+        const distance=Math.hypot(bx-ax,by-ay), ux=(bx-ax)/Math.max(1,distance), uy=(by-ay)/Math.max(1,distance);
+        const inset=Math.min(24,distance*.24), endX=bx-ux*inset, endY=by-uy*inset;
+        const startX=ax+ux*inset,startY=ay+uy*inset;
+        routeElement.current?.setAttribute('visibility',from.z > 1 || to.z > 1 ? 'hidden':'visible');
+        routeLine.current?.setAttribute('d',`M${startX} ${startY} L${endX} ${endY}`);
+        routeArrow.current?.setAttribute('d',`M${endX} ${endY} L${endX-ux*9-uy*4.5} ${endY-uy*9+ux*4.5} L${endX-ux*9+uy*4.5} ${endY-uy*9-ux*4.5} Z`);
+      }
     };
     const render=(now:number) => {
       frame=0; if(disposed) return;
@@ -185,7 +204,7 @@ export default function Board3D(props: Props) {
         landMaterials[i].color.set(CONTINENTS.find(c=>c.id===t.continent)!.color).multiplyScalar(.67);
         const active=t.id===p.selected || t.id===p.target;
         landMaterials[i].emissive.copy(color);landMaterials[i].emissiveIntensity=active?.36:t.id===hover?.22:p.validTargets.includes(t.id)?.1:0;
-        outlineMaterials[i].color.set(active?'#fff0b8':p.validTargets.includes(t.id)?'#d3eac6':'#b9aa82');outlineMaterials[i].opacity=active?1:.64;
+        outlineMaterials[i].color.set(active?'#fff0b8':p.validTargets.includes(t.id)?'#e7f2c8':p.eligibleSources?.includes(t.id)?'#dacb9f':'#b9aa82');outlineMaterials[i].opacity=active || p.validTargets.includes(t.id)?1:.64;
         const isCannon=state ? state.armies>=10 : i%9===0;
         if(isCannon)place(cannonSets,cannonCounts,t.x-550-13,320-t.y-4,14,color);
         else place(unitSets,unitCounts,t.x-550-13,320-t.y-4,14,color);
@@ -257,7 +276,7 @@ export default function Board3D(props: Props) {
       const descriptor=Object.getOwnPropertyDescriptor(window,'__riskBoardStats');if(descriptor?.get===statsGetter)Reflect.deleteProperty(window,'__riskBoardStats');
     };
   },[props.quality,failed]);
-  useEffect(()=>{api.current?.update();},[props.game,props.selected,props.target,props.validTargets]);
+  useEffect(()=>{api.current?.update();},[props.game,props.selected,props.target,props.validTargets,props.eligibleSources]);
   useEffect(()=>{api.current?.animate();},[props.motion,props.reducedMotion]);
   useEffect(()=>{api.current?.open();},[props.game?.id,props.quality,props.reducedMotion,failed]);
 
@@ -302,16 +321,18 @@ export default function Board3D(props: Props) {
     <div className="board3d-canvas" ref={host} aria-hidden="true"/>
     <svg className="board3d-labels" viewBox={`0 0 ${viewport.width} ${viewport.height}`} preserveAspectRatio="none" aria-label="Territories and armies" role="group">
       {oceanLabels.map(t=><text key={t.id} ref={element=>{if(element)oceanElements.current.set(t.id,element);else oceanElements.current.delete(t.id);}} className="board3d-ocean-name" aria-hidden="true">{t.name}</text>)}
+      <g ref={routeElement} className="board3d-route-preview" visibility="hidden" aria-hidden="true" data-testid="board-route-preview"><path ref={routeLine} className="board3d-route-line"/><path ref={routeArrow} className="board3d-route-arrow"/></g>
       {TERRITORIES.map(t=>{
-        const state=props.game?.territories[t.id],owner=props.game?.players.find(p=>p.id===state?.owner),active=props.selected===t.id || props.target===t.id,valid=props.validTargets.includes(t.id);
-        return <g key={t.id} ref={element=>{if(element)labelElements.current.set(t.id,element);else labelElements.current.delete(t.id);}} className={`board3d-territory-label ${active?'active':''} ${valid?'valid':''}`} data-territory={t.id} data-selected={active} role="button" tabIndex={props.interactive===false?-1:0} aria-disabled={props.interactive===false} aria-pressed={active} aria-label={`${t.name}${owner?`, ${owner.name}, ${state!.armies} armies`:''}${valid?', available target':''}`}
+        const state=props.game?.territories[t.id],owner=props.game?.players.find(p=>p.id===state?.owner),active=props.selected===t.id || props.target===t.id,valid=props.validTargets.includes(t.id),source=Boolean(props.eligibleSources?.includes(t.id));
+        return <g key={t.id} ref={element=>{if(element)labelElements.current.set(t.id,element);else labelElements.current.delete(t.id);}} className={`board3d-territory-label ${active?'active':''} ${valid?'valid':''} ${source?'eligible-source':''} ${props.target===t.id?'is-destination':''}`} data-territory={t.id} data-selected={active} data-eligible-source={source} data-valid-target={valid} role="button" tabIndex={props.interactive===false?-1:0} aria-disabled={props.interactive===false} aria-pressed={active} aria-label={`${t.name}${owner?`, ${owner.name}, ${state!.armies} armies`:''}${props.selected===t.id?', selected origin':''}${props.target===t.id?', selected destination':''}${valid?', available target':''}${source?', available origin':''}`}
           onKeyDown={event=>{if(props.interactive!==false && (event.key==='Enter' || event.key===' ')){event.preventDefault();event.stopPropagation();props.onSelect(t.id);}}}>
           <title>{t.name}{owner?` · ${owner.name} · ${state!.armies} armies`:''}</title>
           <rect className="board3d-hit" x="-29" y="-20" width="58" height="43" rx="5"/>
           <text className="board3d-name" y="-15">{names[t.id]||t.name}</text>
+          {source && <path className="board3d-source-mark" d="M-22 4 L-16 10 L-22 16 L-28 10 Z" aria-hidden="true"/>}
+          {valid && <circle className="board3d-target-ring" cx="14.5" cy="10" r="14.5" aria-hidden="true"/>}
           {state && <><rect className="board3d-count-bg" x="3" y="1" width="23" height="18" rx="5" style={{stroke:owner?.color||'#b9aa82'}}/>
           <text className="board3d-count" x="14.5" y="14">{state.armies}</text></>}
-          {valid && <circle cx="31" cy="10" r="2.5" fill="#e3e8a6"/>}
         </g>;
       })}
     </svg>

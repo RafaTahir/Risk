@@ -14,6 +14,7 @@ export function useCampaign() {
   const [persistence, setPersistence] = useState<'memory' | 'd1'>('memory');
   const [restoring, setRestoring] = useState(Boolean(session));
   const [pending, setPending] = useState(false);
+  const inFlight = useRef(false);
   const [error, setError] = useState('');
   const socketRef = useRef<CampaignTransport | null>(null);
   const remember = useCallback((next: Session | null) => {
@@ -46,8 +47,13 @@ export function useCampaign() {
   const request = useCallback(async (event: string, payload: unknown = {}): Promise<ServerResponse> => {
     const socket = socketRef.current;
     if (!socket?.connected) { const response = { ok: false, error: 'Reconnect before issuing orders.' }; setError(response.error); return response; }
+    // Lock immediately, before React commits disabled buttons, so rapid taps cannot
+    // create two different command IDs for the same intended order.
+    if (inFlight.current) return { ok: false, error: 'Wait for the current order to finish.' };
+    inFlight.current = true;
     setPending(true); setError('');
     return new Promise(resolve => socket.timeout(8000).emit(event, payload, (err: Error | null, result: ServerResponse) => {
+      inFlight.current = false;
       setPending(false);
       if (err) { const response = { ok: false, error: 'The server did not confirm this order. Check the updated board before retrying.' }; setError(response.error); resolve(response); return; }
       if (!result.ok) setError(result.error || 'The order could not be completed.');

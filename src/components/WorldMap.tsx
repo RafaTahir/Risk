@@ -9,6 +9,7 @@ interface WorldMapProps {
   selected: string | null;
   target: string | null;
   validTargets: string[];
+  eligibleSources?: string[];
   onSelect: (id: string) => void;
   interactive?: boolean;
 }
@@ -21,7 +22,7 @@ const shortNames: Record<string,string[]> = {
   'middle-east':['MIDDLE EAST'], 'western-australia':['WESTERN','AUSTRALIA'],
   'eastern-australia':['EASTERN','AUSTRALIA'], 'new-guinea':['NEW GUINEA'],
 };
-export default function WorldMap({ game, selected, target, validTargets, onSelect, interactive = true }: WorldMapProps) {
+export default function WorldMap({ game, selected, target, validTargets, eligibleSources = [], onSelect, interactive = true }: WorldMapProps) {
   const uid = useId().replaceAll(':','');
   const ocean = `${uid}-ocean`; const grid = `${uid}-grid`;
   const host = useRef<HTMLDivElement>(null);
@@ -101,6 +102,15 @@ export default function WorldMap({ game, selected, target, validTargets, onSelec
   const aspect=size.width/size.height;
   const width=Math.max(1100,640*aspect)/view.zoom,height=width/aspect;
   const labelScale=Math.max(1,Math.min(2,width/size.width));
+  const origin=TERRITORIES.find(t=>t.id===selected),destination=TERRITORIES.find(t=>t.id===target);
+  const routeLegal=Boolean(origin && destination && Math.abs(origin.x-destination.x)<=550 && (validTargets.includes(destination.id) || (game?.phase==='occupy' && game.occupation?.from===origin.id && game.occupation.to===destination.id)));
+  let routeLine='',routeArrow='';
+  if(routeLegal && origin && destination) {
+    const dx=destination.x-origin.x,dy=destination.y-origin.y,distance=Math.hypot(dx,dy),ux=dx/Math.max(1,distance),uy=dy/Math.max(1,distance);
+    const inset=Math.min(24*labelScale,distance*.24),ax=origin.x+ux*inset,ay=origin.y+uy*inset,bx=destination.x-ux*inset,by=destination.y-uy*inset;
+    routeLine=`M${ax} ${ay} L${bx} ${by}`;
+    routeArrow=`M${bx} ${by} L${bx-ux*9*labelScale-uy*4.5*labelScale} ${by-uy*9*labelScale+ux*4.5*labelScale} L${bx-ux*9*labelScale+uy*4.5*labelScale} ${by-uy*9*labelScale-ux*4.5*labelScale} Z`;
+  }
   return <div className="world-map" ref={host}>
     <svg viewBox={`${view.x-width/2} ${view.y-height/2} ${width} ${height}`} role="group" aria-label="World conquest map, 42 territories" className="world-map-svg" onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end}
       onClickCapture={event=>{if(suppressClick.current && event.detail!==0){event.preventDefault();event.stopPropagation();}}}
@@ -137,12 +147,12 @@ export default function WorldMap({ game, selected, target, validTargets, onSelec
         const territory = game?.territories[t.id];
         const player = game?.players.find(p=>p.id === territory?.owner);
         const continent = CONTINENTS.find(c=>c.id === t.continent)!;
-        const active = t.id === selected; const targeted = t.id === target; const valid = validTargets.includes(t.id);
+        const active = t.id === selected; const targeted = t.id === target; const valid = validTargets.includes(t.id); const source = eligibleSources.includes(t.id);
         const ownerColor = player?.color ?? continent.color;
         const labels = shortNames[t.id] ?? [t.name.toUpperCase()];
-        return <g key={t.id} className={`map-territory ${active?'is-selected':''} ${targeted?'is-target':''} ${valid?'is-valid':''} ${interactive?'is-interactive':''}`}
+        return <g key={t.id} className={`map-territory ${active?'is-selected':''} ${targeted?'is-target':''} ${valid?'is-valid':''} ${source?'eligible-source':''} ${interactive?'is-interactive':''}`} data-territory={t.id} data-selected={active || targeted} data-eligible-source={source} data-valid-target={valid}
           style={{'--territory-color':continent.color,'--owner-color':ownerColor} as CSSProperties} tabIndex={interactive?0:-1} role="button"
-          aria-label={`${t.name}${player?`, ${player.name}, ${territory?.armies} armies`:''}${active?', selected':''}${valid?', available target':''}`}
+          aria-label={`${t.name}${player?`, ${player.name}, ${territory?.armies} armies`:''}${active?', selected origin':''}${targeted?', selected destination':''}${valid?', available target':''}${source?', available origin':''}`}
           aria-pressed={active || targeted} aria-disabled={!interactive} onClick={()=>interactive && onSelect(t.id)}
           onKeyDown={e=>{if(interactive && (e.key==='Enter' || e.key===' ')){e.preventDefault();onSelect(t.id);}}}>
           <title>{t.name}{player?` · ${player.name} · ${territory?.armies} armies`:''}</title>
@@ -153,14 +163,16 @@ export default function WorldMap({ game, selected, target, validTargets, onSelec
           <text className="map-territory-name" x="0" y={-(territory?10:2)-(labels.length-1)*4}>
             {labels.map((line,i)=><tspan key={line} x="0" dy={i===0?0:9}>{line}</tspan>)}
           </text>
+          {source && <path className="map-source-mark" d="M-23 4 L-17 10 L-23 16 L-29 10 Z" aria-hidden="true"/>}
+          {valid && <circle className="map-target-ring" cx="0" cy="10" r="16" aria-hidden="true"/>}
           {territory && <g className="map-army" transform="translate(0 10)">
             <rect x="-12" y="-10" width="24" height="20" rx="6"/>
             <text y="4">{territory.armies}</text>
           </g>}
-          {valid && <circle className="map-target-dot" cx="18" cy="10" r="3"/>}
           </g>
         </g>;
       })}
+      <g className="map-route-preview" data-testid="board-route-preview" visibility={routeLegal?'visible':'hidden'} aria-hidden="true"><path className="map-route-line" d={routeLine}/><path className="map-route-arrow" d={routeArrow}/></g>
       <g className="map-compass" transform="translate(105 526)" aria-hidden="true">
         <circle r="31"/><circle r="26"/><path d="M0 -39 L7 -7 L0 0 L-7 -7 Z" className="map-compass-north"/><path d="M0 39 L-7 7 L0 0 L7 7 Z M-39 0 L-7 -7 L0 0 L-7 7 Z M39 0 L7 7 L0 0 L7 -7 Z"/>
         <text x="0" y="-45">N</text><text x="0" y="55">S</text><text x="-48" y="4">W</text><text x="48" y="4">E</text>

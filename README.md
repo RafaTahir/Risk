@@ -19,13 +19,13 @@ npm run build
 npm start
 ```
 
-`npm test` runs the rules and actual Socket.IO integration tests. `npm run build` checks TypeScript and generates the browser bundle in `dist/`. `npm start` serves that bundle through Express in production mode; run the build first. The production entry point currently uses `tsx`, so retain development dependencies when installing this project for production, or add a separate server compilation step before using an install that omits them.
+`npm test` runs the rules/AI, legal-affordance, Socket.IO, Worker security/concurrency, and actual workerd/D1 integration tests. `npm run build` checks TypeScript and generates the browser bundle in `dist/`. `npm start` serves that bundle through Express in production mode; run the build first. The production entry point currently uses `tsx`, so retain development dependencies when installing this project for production, or add a separate server compilation step before using an install that omits them.
 
 ## Playing with other people
 
 Create a private room and share its ten-character room code. Each person opens this application on the **same server** and enters that code with a commander name. The host manages the lobby and starts when 3–6 commanders, including any computer opponents, are present. A solo campaign starts immediately with one human and 2–5 computers. Turn order is randomized at the start.
 
-A room code is an invitation to join a lobby, not a separate hosted game URL. On a LAN, other players must reach the machine running the server through its LAN address and configured port. Connections from outside that network require a separately arranged reachable host. **This repository does not include a deployed public endpoint, and no public deployment is performed by these instructions.**
+A room code is an invitation to join a lobby, not a separate hosted game URL. On a LAN, other players must reach the machine running the server through its LAN address and configured port. Connections from outside that network require a separately arranged reachable host. **Local run commands do not publish a public endpoint; deployment is a separate hosting operation.**
 
 Sessions reconnect to the existing player slot using a private token returned when joining. Opening a replacement connection with that token disconnects the previous socket for the same player. Keep tokens private. A network disconnect preserves the player's position; human turns wait for the human to return. Computers are never silently substituted for missing humans. When every human is offline, computer play pauses and resumes after a human reconnects.
 
@@ -90,14 +90,18 @@ npm run dev:worker
 
 The local Worker serves the production UI and real D1 API together on internal port3001. Local D1 files are under `.worker-local/d1`, excluded from Git and release packages. The browser discovers `/api/transport` and switches automatically; there is no hardcoded external API endpoint.
 
-Run `RISK_TEST_BASE_URL=http://127.0.0.1:3001 RISK_TEST_HTTP=1 npm run test:browser` for the Worker browser flows. `npm test` includes all54 engine, socket, SQLite concurrency/security, and actual workerd/D1 tests. Node browser runs execute four shared cases and skip four HTTP-only cases; Worker runs execute all eight.
+Run `RISK_TEST_BASE_URL=http://127.0.0.1:3001 RISK_TEST_HTTP=1 npm run test:browser` for the Worker browser flows. `npm test` includes75 automated checks across the rules/AI, tactical-affordance, socket, concurrency/security, and actual workerd/D1 suites. Node browser runs execute four shared cases and skip seven HTTP-only cases; Worker runs execute all11.
 
 Deployment inputs are `dist/` browser assets, `dist-worker/worker.js`, logical D1 binding `DB`, and `migrations/0001_rooms.sql`. The parent task has the Sites tools and verified manifest schema; this child produces the tested source/artifacts but does not provision or publish the site. See [the complete Worker guide](docs/SITES.md) and [current release handoff](docs/RELEASE-HANDOFF.md).
 
 ## Single-file Sites starter
 
-Use `npm run build:sites:standalone` to produce `dist-sites/server/index.js`, which embeds the exact frontend and API and needs only the DB binding. `npm run dev:sites:standalone` validates it locally on port3002 without an ASSETS binding. The official parent starter can copy this module from worker/index.js to dist/server/index.js, generate dist/.openai/hosting.json, and apply migrations/0001_rooms.sql. All59 automated tests and8 standalone browser scenarios pass. See [the exact parent handoff](docs/PARENT-HANDOFF.md).
+Use `npm run build:sites:standalone` to produce `dist-sites/server/index.js`, which embeds the exact frontend and API and needs only the DB binding. `npm run dev:sites:standalone` validates it locally on port3002 without an ASSETS binding. The official parent starter can copy this module from worker/index.js to dist/server/index.js, generate dist/.openai/hosting.json, and apply migrations/0001_rooms.sql. The current automated and browser validation is recorded in [VALIDATION.md](docs/VALIDATION.md). See [the exact parent handoff](docs/PARENT-HANDOFF.md).
 
 ## Board-first tabletop experience
 
 The current interface is a full-window physical board with hinged opening, shiny infantry/cannons and reserve trays. Drag to orbit/tilt, pinch or wheel to zoom, and use the compact View controls for pan/reset/opening. Solo begins in one click; the remaining turn actions are contextual. Players, cards, bonuses, history and settings are available from the table menu. The same game rules, AI and durable multiplayer are preserved. See [the board-first update and validation](docs/BOARD-FIRST.md).
+
+## Tactical clarity and optional teaching
+
+Legal source diamonds, destination rings and a camera-aligned route preview make the next action visible. The dock previews resulting army counts; optional phase lessons and paired-dice battle reports explain the rules without covering the table during play. Tactical contrast, reduced motion, safe preview cancellation and rapid-tap protection preserve player control. See [research, scope and validation](docs/PLAYER-EXPERIENCE.md). Existing installations keep their DB and apply no new migration for this interface update.

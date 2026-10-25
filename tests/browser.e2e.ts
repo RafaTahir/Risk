@@ -74,8 +74,12 @@ async function territoryState(page: Page) {
   return page.locator('.board3d-labels [role=button], .world-map-svg [role=button]').evaluateAll(elements => elements.map(element => element.getAttribute('aria-label') || ''));
 }
 async function center(locator: Locator) {
-  const box = await locator.boundingBox(); expect(box).not.toBeNull();
-  return { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 };
+  // SVG painted quads returned by boundingBox can differ from the DOM rectangle
+  // used by hit-testing. Use one coordinate system for camera and tap checks.
+  return locator.evaluate(element => {
+    const box = element.getBoundingClientRect();
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  });
 }
 async function canHit(locator: Locator) {
   return locator.evaluate(element => {
@@ -87,8 +91,15 @@ async function settleCamera(page: Page) {
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
 }
 async function tapTerritory(page: Page, id: string) {
-  const label = territory(page, id); expect(await canHit(label)).toBe(true);
-  const point = await center(label); await page.touchscreen.tap(point.x, point.y);
+  const label = territory(page, id);
+  // Verify the exact coordinates we send in the same evaluation, rather than
+  // checking a DOM point and then tapping a different SVG painted-quad point.
+  const point = await label.evaluate(element => {
+    const box = element.getBoundingClientRect(), x = box.x + box.width / 2, y = box.y + box.height / 2;
+    return { x, y, hit: x > 0 && y > 0 && x < innerWidth && y < innerHeight && element.contains(document.elementFromPoint(x, y)) };
+  });
+  expect(point.hit).toBe(true);
+  await page.touchscreen.tap(point.x, point.y);
   await expect(label).toHaveAttribute('aria-pressed', 'true');
 }
 async function chooseTerritory(page: Page, id: string) {

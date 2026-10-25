@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, Dice1, Dice2, Dice3, Flag, Layers3, Minus, Plus, Shield, SkipForward, Swords, X } from 'lucide-react';
+import { ArrowRight, CircleHelp, Dice1, Dice2, Dice3, Flag, Layers3, Minus, Plus, Shield, SkipForward, Swords, X } from 'lucide-react';
 import { nextTradeValue } from '../../shared/game';
 import type { GameAction, GameState, Player } from '../../shared/types';
 import { TERRITORY_BY_ID } from '../../shared/world';
@@ -15,6 +15,7 @@ interface GameDockProps {
   act: (action: GameAction) => Promise<unknown>;
   onCards: () => void;
   onClearSelection: () => void;
+  onHint?: () => void;
 }
 
 interface ArmyPickerProps {
@@ -50,7 +51,7 @@ function ArmyPicker({ value, minimum, maximum, disabled, onChange }: ArmyPickerP
 const phaseLabels = { reinforce: 'Reinforce', attack: 'Attack', occupy: 'Advance', fortify: 'Fortify', gameover: 'Victory' };
 const diceIcons = [Dice1, Dice2, Dice3];
 
-export default function GameDock({ game, me, selected, target, myTurn, pending, act, onCards, onClearSelection }: GameDockProps) {
+export default function GameDock({ game, me, selected, target, myTurn, pending, act, onCards, onClearSelection, onHint }: GameDockProps) {
   const [count, setCount] = useState(1);
   const [dice, setDice] = useState(3);
   const origin = selected ? game.territories[selected] : undefined;
@@ -70,6 +71,9 @@ export default function GameDock({ game, me, selected, target, myTurn, pending, 
   const actual = Math.max(minimum, Math.min(maximum, count));
   const maximumDice = Math.min(3, Math.max(0, (origin?.armies ?? 1) - 1));
   const actualDice = Math.max(1, Math.min(maximumDice, dice));
+  const neighboringEnemies = originInfo?.neighbors.filter(id => game.territories[id].owner !== me?.id) ?? [];
+  const neighboringFriends = originInfo?.neighbors.filter(id => game.territories[id].owner === me?.id) ?? [];
+  const hasEligibleSource = Object.entries(game.territories).some(([id, state]) => state.owner === me?.id && state.armies > 1 && TERRITORY_BY_ID[id].neighbors.some(neighbor => game.phase === 'attack' ? game.territories[neighbor].owner !== me?.id : game.territories[neighbor].owner === me?.id));
 
   useEffect(() => {
     setCount(game.phase === 'reinforce' ? Math.max(1, game.reinforcements) : game.phase === 'occupy' ? game.occupation?.maximum ?? 1 : 1);
@@ -90,7 +94,8 @@ export default function GameDock({ game, me, selected, target, myTurn, pending, 
   const canAttack = game.phase === 'attack' && friendly && adjacent && Boolean(destination && destination.owner !== me?.id) && maximumDice > 0;
   const canOccupy = game.phase === 'occupy' && Boolean(occupation) && validCount;
   const canFortify = game.phase === 'fortify' && friendly && adjacent && selected !== target && destination?.owner === me?.id && validCount;
-  const showPicker = game.phase === 'occupy' || (friendly && available > 0);
+  const sourceHasRoute = game.phase === 'attack' ? neighboringEnemies.length > 0 : game.phase === 'fortify' ? neighboringFriends.length > 0 : true;
+  const showPicker = game.phase === 'occupy' || (friendly && available > 0 && sourceHasRoute && !mustTrade);
   const showSecondary = game.phase === 'attack' || game.phase === 'fortify';
   const fromId = occupation?.from ?? selected;
   const toId = occupation?.to ?? target;
@@ -101,12 +106,23 @@ export default function GameDock({ game, me, selected, target, myTurn, pending, 
 
   let instruction = game.phase === 'reinforce' ? 'Choose your territory to reinforce.' : game.phase === 'attack' ? 'Choose your territory, then an adjacent enemy.' : game.phase === 'occupy' ? 'Move armies into your conquered territory.' : 'Choose two adjacent territories you own.';
   if (mustTrade) instruction = `Trade a set before deploying · ${cards} cards in hand.`;
+  else if (game.phase === 'attack' && !hasEligibleSource) instruction = 'No legal attacks remain. Finish attacking to continue.';
+  else if (game.phase === 'fortify' && !hasEligibleSource) instruction = 'No adjacent move is available. Skip to end your turn.';
   else if (origin && !friendly && game.phase !== 'occupy') instruction = 'Choose a territory you own.';
   else if (friendly && available < 1 && game.phase !== 'reinforce') instruction = 'Keep one army here. Choose a stronger territory.';
+  else if (friendly && game.phase === 'attack' && !neighboringEnemies.length) instruction = 'No adjacent enemy here. Choose a border territory.';
+  else if (friendly && game.phase === 'fortify' && !neighboringFriends.length) instruction = 'No adjacent friendly territory here. Choose another origin.';
+  else if (friendly && game.phase === 'attack' && !canAttack) instruction = `Choose an adjacent enemy · ${neighboringEnemies.length} available.`;
+  else if (friendly && game.phase === 'fortify' && !canFortify) instruction = `Choose a friendly neighbor · ${neighboringFriends.length} available.`;
 
   const phaseDetail = game.phase === 'reinforce' ? `${game.reinforcements} armies ready${game.resumePhase ? ' · resume attack after deploying' : ''}` : game.phase === 'occupy' ? `${minimum}–${available} armies` : game.phase === 'fortify' ? 'One adjacent move' : 'Ties defend';
   const showRoute = Boolean(fromInfo && fromState);
-  const showDestination = Boolean(occupation) || (game.phase !== 'reinforce' && friendly && available > 0);
+  const showDestination = Boolean(occupation) || (game.phase !== 'reinforce' && friendly && available > 0 && sourceHasRoute);
+  let actionPreview = instruction;
+  if (canDeploy && origin) actionPreview = `After deploy · ${origin.armies + actual} armies here · ${game.reinforcements - actual} in reserve`;
+  else if (canOccupy && fromState && toState) actionPreview = `After advance · ${fromState.armies - actual} left behind · ${toState.armies + actual} at destination`;
+  else if (canFortify && fromState && toState) actionPreview = `After move · ${fromState.armies - actual} left behind · ${toState.armies + actual} at destination`;
+  else if (canAttack && destination) actionPreview = `${actualDice} attack ${actualDice === 1 ? 'die' : 'dice'} vs ${Math.min(2, destination.armies)} defense · ties defend · leave 1 behind`;
 
   return <aside className={`cdock cdock-active cdock-${game.phase}${mustTrade ? ' cdock-trade-required' : ''}`} aria-label="Turn controls" aria-busy={pending}>
     <div className="cdock-heading">
@@ -116,12 +132,13 @@ export default function GameDock({ game, me, selected, target, myTurn, pending, 
           <span className="cdock-territory"><span className="cdock-owner-dot" style={{ background: game.players.find(player => player.id === fromState?.owner)?.color }} aria-hidden="true"/><b title={fromInfo?.name}>{fromInfo?.name}</b><span className="cdock-army-badge" aria-label={`${fromState?.armies} armies`}>{fromState?.armies}</span></span>
           {showDestination && <><ArrowRight size={14} className="cdock-route-arrow" aria-hidden="true"/>{toInfo && toState ? <span className="cdock-territory"><b title={toInfo.name}>{toInfo.name}</b><span className="cdock-army-badge" aria-label={`${toState.armies} armies`}>{toState.armies}</span></span> : <span className="cdock-placeholder">{game.phase === 'attack' ? 'Choose an enemy' : 'Choose a neighbor'}</span>}</>}
         </div> : <p className="cdock-prompt">{instruction}</p>}
-        {showRoute && game.phase !== 'occupy' && (mustTrade || !friendly || (!showPicker && game.phase !== 'reinforce')) && <p className="cdock-hint">{instruction}</p>}
       </div>
       <div className="cdock-tools">
+        {onHint && <button type="button" className="cdock-icon cdock-help" aria-label="Explain this phase" title="Explain this phase" onClick={onHint}><CircleHelp size={18}/></button>}
         <button type="button" className={`cdock-cards${mustTrade ? ' cdock-cards-required' : ''}`} aria-label={mustTrade ? 'Trade cards before deploying' : 'Your territory cards'} title={`${cards} cards · next set +${nextTradeValue(game.tradeCount)} armies`} onClick={onCards}><Layers3 size={17}/>{mustTrade && <span>Trade cards</span>}<b>{cards}</b></button>
         {selected && game.phase !== 'occupy' && <button type="button" className="cdock-icon" aria-label="Clear territory selection" onClick={onClearSelection}><X size={17}/></button>}
       </div>
+      {showRoute && <p className={`cdock-action-preview${canDeploy || canOccupy || canFortify || canAttack ? ' is-ready' : ''}`} data-testid="action-preview" title={actionPreview} aria-live="polite" aria-atomic="true">{actionPreview}</p>}
     </div>
     {(showPicker || showSecondary) && <div className={`cdock-controls${!showPicker ? ' cdock-controls-quiet' : ''}`}>
       {showPicker && (game.phase === 'attack' ? <div className="cdock-dice" role="group" aria-label="Attacking dice">{diceIcons.map((Icon, index) => {
