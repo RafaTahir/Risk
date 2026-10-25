@@ -90,7 +90,7 @@ npm run dev:worker
 
 The local Worker serves the production UI and real D1 API together on internal port3001. Local D1 files are under `.worker-local/d1`, excluded from Git and release packages. The browser discovers `/api/transport` and switches automatically; there is no hardcoded external API endpoint.
 
-Run `RISK_TEST_BASE_URL=http://127.0.0.1:3001 RISK_TEST_HTTP=1 npm run test:browser` for the Worker browser flows. `npm test` includes75 automated checks across the rules/AI, tactical-affordance, socket, concurrency/security, and actual workerd/D1 suites. Node browser runs execute four shared cases and skip seven HTTP-only cases; Worker runs execute all11.
+Run `RISK_TEST_BASE_URL=http://127.0.0.1:3001 RISK_TEST_HTTP=1 npm run test:browser` for the Worker browser flows. `npm test` includes75 automated checks across the rules/AI, tactical-affordance, socket, concurrency/security, and actual workerd/D1 suites. Node browser runs execute four shared cases and skip ten HTTP-only cases; Worker runs execute all14.
 
 Deployment inputs are `dist/` browser assets, `dist-worker/worker.js`, logical D1 binding `DB`, and `migrations/0001_rooms.sql`. The parent task has the Sites tools and verified manifest schema; this child produces the tested source/artifacts but does not provision or publish the site. See [the complete Worker guide](docs/SITES.md) and [current release handoff](docs/RELEASE-HANDOFF.md).
 

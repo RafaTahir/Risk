@@ -277,7 +277,11 @@ export default function Board3D(props: Props) {
     };
   },[props.quality,failed]);
   useEffect(()=>{api.current?.update();},[props.game,props.selected,props.target,props.validTargets,props.eligibleSources]);
-  useEffect(()=>{api.current?.animate();},[props.motion,props.reducedMotion]);
+  useEffect(()=>{
+    // Fallback/context loss has no render loop to complete queued piece motion.
+    if(failed) { if(props.motion) props.onMotionEnd?.(); return; }
+    api.current?.animate();
+  },[props.motion,props.reducedMotion,props.onMotionEnd,failed]);
   useEffect(()=>{api.current?.open();},[props.game?.id,props.quality,props.reducedMotion,failed]);
 
   const pointerDown=(event:ReactPointerEvent<HTMLDivElement>) => {

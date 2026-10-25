@@ -48,6 +48,7 @@ export default function App() {
   const [contrast, setContrast] = useSetting('contrast', 'standard');
   const [systemReduced, setSystemReduced] = useState(() => matchMedia('(prefers-reduced-motion: reduce)').matches); const reducedMotion = systemReduced || speed === 'instant';
   const [motion, setMotion] = useState<BoardMotion | null>(null); const clearMotion = useCallback(() => setMotion(null), []);
+  useEffect(() => { if (reducedMotion || view !== '3d') clearMotion(); }, [reducedMotion, view, clearMotion]);
   const previous = useRef<GameState | null>(null); const audio = useRef<AudioContext | null>(null); const [menuOpen, setMenuOpen] = useState(false);
   const [combatVisible, setCombatVisible] = useState(false);
   const [lastBattle, setLastBattle] = useState<Combat | null>(null);
@@ -134,7 +135,7 @@ export default function App() {
       {game && !dialog && <><div className="table-utilities"><button className="table-utility player-utility" aria-label="Players" onClick={() => openDialog('players')}><span className="player-dots">{game.players.filter(p => p.alive).map(p => <i key={p.id} style={{ background: p.color }}/>)}</span><Users size={16}/></button><button className="table-utility" aria-label={`Your territory cards, ${me?.cardCount || 0} cards`} onClick={() => openDialog('cards')}><Layers3 size={18}/><span>{me?.cardCount || 0}</span></button><button className="table-utility find-button" aria-label="Find territory" onClick={() => openDialog('find')}><Compass size={18}/></button></div>
         <GameDock game={game} me={me} selected={selected} target={target} myTurn={myTurn} pending={pending || !connected} act={submitAction} onCards={() => openDialog('cards')} onClearSelection={clearSelection} onHint={() => openDialog('guide')}/>
         {combatVisible && lastBattle && <BattleToast combat={lastBattle} onOpen={openBattle} onDismiss={() => setCombatVisible(false)}/>}
-        {motion && <button className="skip-animation" onClick={clearMotion}><SkipForward size={14}/>Skip animation</button>}
+        {motion && !reducedMotion && view === '3d' && <button className="skip-animation" onClick={clearMotion}><SkipForward size={14}/>Skip animation</button>}
         {game.winner && <div className="table-victory"><Trophy size={28}/><div><b>The world is yours.</b><span>{game.players.find(p => p.id === game.winner)?.name} controls all 42 territories.</span></div><button className="button button-gold" onClick={() => openDialog('leave')}>Play again<ArrowRight size={16}/></button></div>}
       </>}
     </main>
