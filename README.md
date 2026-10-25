@@ -97,3 +97,7 @@ Deployment inputs are `dist/` browser assets, `dist-worker/worker.js`, logical D
 ## Single-file Sites starter
 
 Use `npm run build:sites:standalone` to produce `dist-sites/server/index.js`, which embeds the exact frontend and API and needs only the DB binding. `npm run dev:sites:standalone` validates it locally on port3002 without an ASSETS binding. The official parent starter can copy this module from worker/index.js to dist/server/index.js, generate dist/.openai/hosting.json, and apply migrations/0001_rooms.sql. All59 automated tests and8 standalone browser scenarios pass. See [the exact parent handoff](docs/PARENT-HANDOFF.md).
+
+## Board-first tabletop experience
+
+The current interface is a full-window physical board with hinged opening, shiny infantry/cannons and reserve trays. Drag to orbit/tilt, pinch or wheel to zoom, and use the compact View controls for pan/reset/opening. Solo begins in one click; the remaining turn actions are contextual. Players, cards, bonuses, history and settings are available from the table menu. The same game rules, AI and durable multiplayer are preserved. See [the board-first update and validation](docs/BOARD-FIRST.md).

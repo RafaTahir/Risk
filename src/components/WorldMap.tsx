@@ -1,5 +1,5 @@
-import { useId } from 'react';
-import type { CSSProperties } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
 import type { GameState } from '../../shared/types';
 import { CONTINENTS, TERRITORIES } from '../../shared/world';
 import './WorldMap.css';
@@ -23,13 +23,99 @@ const shortNames: Record<string,string[]> = {
 };
 export default function WorldMap({ game, selected, target, validTargets, onSelect, interactive = true }: WorldMapProps) {
   const uid = useId().replaceAll(':','');
-  const ocean = `${uid}-ocean`; const grid = `${uid}-grid`; const glow = `${uid}-glow`;
-  return <div className="world-map">
-    <svg viewBox="0 0 1100 640" role="group" aria-label="World conquest map, 42 territories" className="world-map-svg">
+  const ocean = `${uid}-ocean`; const grid = `${uid}-grid`;
+  const host = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({width:1100,height:640});
+  const [view, setView] = useState({zoom:1,x:550,y:320});
+  const viewRef = useRef(view);
+  const sizeRef = useRef(size);
+  const initialSize = useRef(false);
+  const pointers = useRef(new Map<number,{x:number;y:number}>());
+  const gesture = useRef({x:0,y:0,distance:0,moved:false});
+  const suppressClick = useRef(false);
+  const bounds = (next:typeof view) => {
+    const currentSize = sizeRef.current;
+    const zoom=Math.max(1,Math.min(3,next.zoom));
+    const aspect = currentSize.width / currentSize.height;
+    const width = Math.max(1100,640*aspect)/zoom;
+    const height = width/aspect;
+    const maxX = Math.max(0,(1100-width)/2+30);
+    const maxY = Math.max(0,(640-height)/2+24);
+    return {zoom,x:550+Math.max(-maxX,Math.min(maxX,next.x-550)),y:320+Math.max(-maxY,Math.min(maxY,next.y-320))};
+  };
+  const changeView = (next:typeof view) => { const bounded = bounds(next); viewRef.current=bounded; setView(bounded); };
+  const zoom = (amount:number) => changeView({...viewRef.current,zoom:Math.max(1,Math.min(3,viewRef.current.zoom+amount))});
+  const reset = () => changeView({zoom:1,x:550,y:320});
+  useEffect(() => {
+    const container = host.current; if (!container) return;
+    const resize = () => {
+      const width=container.clientWidth,height=container.clientHeight; if(!width || !height) return;
+      const nextSize={width,height}; sizeRef.current=nextSize; setSize(nextSize);
+      if(!initialSize.current) { initialSize.current=true; changeView({zoom:width<600 && height>width?1.5:1,x:550,y:320}); }
+      else changeView(viewRef.current);
+    };
+    const wheel = (event:WheelEvent) => {
+      event.preventDefault();
+      const v=viewRef.current, viewport=sizeRef.current;
+      const nextZoom=Math.max(1,Math.min(3,v.zoom*Math.exp(-event.deltaY*.0015)));
+      const units=Math.max(1100,640*viewport.width/viewport.height)/viewport.width/v.zoom;
+      const nextUnits=units*v.zoom/nextZoom;
+      const rect=container.getBoundingClientRect();
+      changeView({zoom:nextZoom,x:v.x+(event.clientX-rect.left-viewport.width/2)*(units-nextUnits),y:v.y+(event.clientY-rect.top-viewport.height/2)*(units-nextUnits)});
+    };
+    const observer=new ResizeObserver(resize); observer.observe(container); resize();
+    container.addEventListener('wheel',wheel,{passive:false});
+    return () => { observer.disconnect(); container.removeEventListener('wheel',wheel); };
+  },[]);
+  const begin = (event:ReactPointerEvent<SVGSVGElement>) => {
+    if(event.button!==0) return;
+    pointers.current.set(event.pointerId,{x:event.clientX,y:event.clientY});
+    const points=[...pointers.current.values()];
+    if(points.length===1) { suppressClick.current=false; gesture.current={x:event.clientX,y:event.clientY,distance:0,moved:false}; }
+    else { const [a,b]=points; gesture.current={x:(a.x+b.x)/2,y:(a.y+b.y)/2,distance:Math.hypot(a.x-b.x,a.y-b.y),moved:true}; suppressClick.current=true; }
+  };
+  const move = (event:ReactPointerEvent<SVGSVGElement>) => {
+    if(!pointers.current.has(event.pointerId)) return;
+    pointers.current.set(event.pointerId,{x:event.clientX,y:event.clientY});
+    const points=[...pointers.current.values()];
+    const [a,b]=points;
+    const x=b?(a.x+b.x)/2:a.x,y=b?(a.y+b.y)/2:a.y;
+    const distance=b?Math.hypot(a.x-b.x,a.y-b.y):0;
+    const prior=gesture.current;
+    if(!prior.moved && Math.hypot(x-prior.x,y-prior.y)<6) return;
+    if(!event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.setPointerCapture(event.pointerId);
+    const v=viewRef.current, viewport=sizeRef.current;
+    const units=Math.max(1100,640*viewport.width/viewport.height)/viewport.width/v.zoom;
+    const nextZoom=Math.max(1,Math.min(3,distance && prior.distance?v.zoom*distance/prior.distance:v.zoom));
+    const nextUnits=units*v.zoom/nextZoom;
+    const rect=event.currentTarget.getBoundingClientRect();
+    changeView({zoom:nextZoom,x:v.x-(x-prior.x)*units+(x-rect.left-viewport.width/2)*(units-nextUnits),y:v.y-(y-prior.y)*units+(y-rect.top-viewport.height/2)*(units-nextUnits)});
+    gesture.current={x,y,distance,moved:true}; suppressClick.current=true;
+  };
+  const end = (event:ReactPointerEvent<SVGSVGElement>) => {
+    pointers.current.delete(event.pointerId);
+    if(event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    const remaining=[...pointers.current.values()][0];
+    if(remaining) gesture.current={...remaining,distance:0,moved:true};
+  };
+  const aspect=size.width/size.height;
+  const width=Math.max(1100,640*aspect)/view.zoom,height=width/aspect;
+  const labelScale=Math.max(1,Math.min(2,width/size.width));
+  return <div className="world-map" ref={host}>
+    <svg viewBox={`${view.x-width/2} ${view.y-height/2} ${width} ${height}`} role="group" aria-label="World conquest map, 42 territories" className="world-map-svg" onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end}
+      onClickCapture={event=>{if(suppressClick.current && event.detail!==0){event.preventDefault();event.stopPropagation();}}}
+      onKeyDown={event=>{
+        if(event.key==='+' || event.key==='='){event.preventDefault();zoom(.5);}
+        else if(event.key==='-'){event.preventDefault();zoom(-.5);}
+        else if(event.key==='0'){event.preventDefault();reset();}
+        else if(event.altKey && ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) {
+          event.preventDefault(); const v=viewRef.current;
+          changeView({...v,x:v.x+(event.key==='ArrowRight'?70:event.key==='ArrowLeft'?-70:0),y:v.y+(event.key==='ArrowDown'?60:event.key==='ArrowUp'?-60:0)});
+        }
+      }}>
       <defs>
         <radialGradient id={ocean}><stop offset="0" stopColor="#19343d"/><stop offset="1" stopColor="#0b1d28"/></radialGradient>
         <pattern id={grid} width="55" height="55" patternUnits="userSpaceOnUse"><path d="M55 0 H0 V55" fill="none" stroke="#8aa5ad" strokeOpacity=".065" strokeWidth=".75"/></pattern>
-        <filter id={glow} x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3"/></filter>
       </defs>
       <rect width="1100" height="640" fill={`url(#${ocean})`}/>
       <rect width="1100" height="640" fill={`url(#${grid})`}/>
@@ -52,33 +138,45 @@ export default function WorldMap({ game, selected, target, validTargets, onSelec
         const player = game?.players.find(p=>p.id === territory?.owner);
         const continent = CONTINENTS.find(c=>c.id === t.continent)!;
         const active = t.id === selected; const targeted = t.id === target; const valid = validTargets.includes(t.id);
-        const color = player?.color ?? continent.color;
+        const ownerColor = player?.color ?? continent.color;
         const labels = shortNames[t.id] ?? [t.name.toUpperCase()];
         return <g key={t.id} className={`map-territory ${active?'is-selected':''} ${targeted?'is-target':''} ${valid?'is-valid':''} ${interactive?'is-interactive':''}`}
-          style={{'--territory-color':color} as CSSProperties} tabIndex={interactive?0:-1} role="button"
+          style={{'--territory-color':continent.color,'--owner-color':ownerColor} as CSSProperties} tabIndex={interactive?0:-1} role="button"
           aria-label={`${t.name}${player?`, ${player.name}, ${territory?.armies} armies`:''}${active?', selected':''}${valid?', available target':''}`}
-          aria-pressed={active || targeted} onClick={()=>interactive && onSelect(t.id)}
+          aria-pressed={active || targeted} aria-disabled={!interactive} onClick={()=>interactive && onSelect(t.id)}
           onKeyDown={e=>{if(interactive && (e.key==='Enter' || e.key===' ')){e.preventDefault();onSelect(t.id);}}}>
           <title>{t.name}{player?` · ${player.name} · ${territory?.armies} armies`:''}</title>
-          {(active || targeted) && <path d={t.path} fill="none" stroke={color} strokeWidth="9" opacity=".45" filter={`url(#${glow})`}/>}
+          {(active || targeted) && <path d={t.path} fill="none" stroke="#f9e2a9" strokeWidth="9" opacity=".45"/>}
           <path className="map-land" d={t.path}/>
           <path className="map-land-edge" d={t.path}/>
-          <text className="map-territory-name" x={t.x} y={t.y-(territory?10:2)-(labels.length-1)*4}>
-            {labels.map((line,i)=><tspan key={line} x={t.x} dy={i===0?0:9}>{line}</tspan>)}
+          <g transform={`translate(${t.x} ${t.y}) scale(${labelScale})`}>
+          <text className="map-territory-name" x="0" y={-(territory?10:2)-(labels.length-1)*4}>
+            {labels.map((line,i)=><tspan key={line} x="0" dy={i===0?0:9}>{line}</tspan>)}
           </text>
-          {territory && <g className="map-army" transform={`translate(${t.x} ${t.y+10})`}>
+          {territory && <g className="map-army" transform="translate(0 10)">
             <rect x="-12" y="-10" width="24" height="20" rx="6"/>
             <text y="4">{territory.armies}</text>
           </g>}
-          {valid && <circle className="map-target-dot" cx={t.x+18} cy={t.y+10} r="3"/>}
+          {valid && <circle className="map-target-dot" cx="18" cy="10" r="3"/>}
+          </g>
         </g>;
       })}
       <g className="map-compass" transform="translate(105 526)" aria-hidden="true">
         <circle r="31"/><circle r="26"/><path d="M0 -39 L7 -7 L0 0 L-7 -7 Z" className="map-compass-north"/><path d="M0 39 L-7 7 L0 0 L7 7 Z M-39 0 L-7 -7 L0 0 L-7 7 Z M39 0 L7 7 L0 0 L7 -7 Z"/>
         <text x="0" y="-45">N</text><text x="0" y="55">S</text><text x="-48" y="4">W</text><text x="48" y="4">E</text>
       </g>
-      <g className="map-footer" aria-hidden="true"><text x="48" y="621">WORLD THEATRE / CLASSIC TERRITORIES</text><text x="1053" y="621" textAnchor="end">42 TERRITORIES · 6 CONTINENTS</text></g>
     </svg>
+    <div className="world-map-controls" aria-label="Map view controls">
+      <details className="world-map-pan"><summary aria-label="Pan map">↔</summary><div>
+        <button type="button" aria-label="Pan west" onClick={()=>changeView({...viewRef.current,x:viewRef.current.x-90})}>←</button>
+        <button type="button" aria-label="Pan north" onClick={()=>changeView({...viewRef.current,y:viewRef.current.y-70})}>↑</button>
+        <button type="button" aria-label="Pan south" onClick={()=>changeView({...viewRef.current,y:viewRef.current.y+70})}>↓</button>
+        <button type="button" aria-label="Pan east" onClick={()=>changeView({...viewRef.current,x:viewRef.current.x+90})}>→</button>
+      </div></details>
+      <button type="button" aria-label="Zoom out" disabled={view.zoom<=1} onClick={()=>zoom(-.5)}>−</button>
+      <button type="button" className="world-map-reset" aria-label="Reset table view" title="Fit the whole world (0)" onClick={reset}>{view.zoom.toFixed(1)}×</button>
+      <button type="button" aria-label="Zoom in" disabled={view.zoom>=3} onClick={()=>zoom(.5)}>+</button>
+    </div>
   </div>;
 }
 export { WorldMap };
