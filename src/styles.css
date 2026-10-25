@@ -309,3 +309,14 @@ html[data-motion=reduced] *,html[data-motion=reduced] *::before,html[data-motion
 .fold-caption b { display: block; font: 500 27px var(--serif); color: #eee2c7; }
 .fold-caption span { display: block; margin-top: 7px; color: #c7c8b6; font-size: 11px; line-height: 1.6; }
 @media(max-width:600px) { .board-fold-toggle { padding: 8px; } .board-fold-toggle > span { display: none; } .hud-actions { gap: 5px; } .hud-actions .connection:not(.offline) { display: none; } .turn-status { max-width: 175px; } .fold-caption { bottom: max(25px,env(safe-area-inset-bottom)); } .fold-caption b { font-size: 25px; } }
+/* The action belongs to the folded-board view; it is outside the orbit canvas. */
+.board-fold-toggle > .fold-label-compact { display: none; }
+.fold-open-prompt { position: absolute; z-index: 38; left: 50%; top: 64%; transform: translate(-50%,-50%); width: min(340px,calc(100% - 40px)); padding: 16px 18px; border: 1px solid #dfc28680; border-radius: 13px; background: #142019f2; box-shadow: 0 12px 38px #0008; text-align: center; }
+.fold-open-indicator { display: flex; justify-content: center; align-items: center; gap: 7px; margin-bottom: 11px; color: #e6c68c; font-size: 11px; }
+.fold-open-cta { display: flex; width: 100%; min-height: 58px; align-items: center; justify-content: center; gap: 12px; padding: 13px 18px; border: 1px solid #ffe6b0; border-radius: 8px; color: #25271c; background: linear-gradient(115deg,#f4dca9,#d9b375); box-shadow: inset 0 1px #fff7,0 4px 12px #0005; font-size: 17px; font-weight: 700; touch-action: manipulation; }
+.fold-open-cta:hover { background: #ffe4ae; }
+.fold-open-prompt p { margin-top: 11px; color: #d8dfcc; font-size: 11px; line-height: 1.6; }
+.fold-open-prompt small { display: block; margin-top: 7px; color: #bbc9b0; font-size: 10px; line-height: 1.5; }
+@media(max-width:600px) { .board-fold-toggle > .fold-label-full { display: none; } .board-fold-toggle > .fold-label-compact { display: inline; } .board-fold-toggle { gap: 5px; padding: 8px; font-size: 10px; } .turn-status { min-width: 0; flex: 0 1 140px; } .turn-status b { max-width: 100%; } .fold-open-prompt { top: 63%; max-width: 310px; padding: 14px 15px; } .fold-open-cta { min-height: 56px; } }
+@media(max-width:360px) { .table-brand { font-size: 21px; gap: 3px; } .turn-status { max-width: 115px; padding: 7px 8px; } .turn-counter { display: none; } .hud-actions { gap: 4px; } .board-fold-toggle { padding: 8px 6px; } }
+@media(max-height:520px) and (min-width:600px) { .fold-open-prompt { top: 62%; width: 300px; padding: 10px 13px; } .fold-open-indicator { margin-bottom: 6px; } .fold-open-cta { min-height: 46px; padding: 8px 13px; font-size: 15px; } .fold-open-prompt p { margin-top: 6px; font-size: 10px; } }

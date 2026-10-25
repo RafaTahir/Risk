@@ -18,7 +18,7 @@ A fresh welcome screen, private lobby, or table after leaving has no assigned ar
 
 ## Camera interaction
 
-Mouse and one-finger orbit use a captured, viewport-normalized gesture anchor. Screen-right swivels the far board edge right; dragging up raises the viewpoint. These directions remain consistent at different board rotations. Small movements remain clicks/taps; pinches and drags do not select territories or send orders. Pinch-to-one-finger transitions rebase the gesture rather than jumping.
+Mouse and one-finger orbit use a captured, viewport-normalized gesture anchor. At the player's request both direct-drag axes are reversed: screen-right swivels the far board edge left, and dragging down raises the viewpoint. These directions remain consistent at different board rotations. Wheel/pinch zoom, two-finger pan, keyboard controls and view bounds are unchanged. Small movements remain clicks/taps; pinches and drags do not select territories or send orders. Pinch-to-one-finger transitions rebase the gesture rather than jumping.
 
 The camera radius stays fixed during ordinary orbit/tilt, avoiding automatic zoom changes while the pointer moves. Resize and explicit reset refit deliberately. Zooming out and reset remain available when an intentionally rotated or zoomed board extends beyond the viewport. Text stays printed at every angle; use zoom and orbit to inspect a region, or the accessible territory finder for exact names and counts.
 
@@ -27,6 +27,8 @@ Classic mechanics, multiplayer authority, card privacy, room persistence and sch
 ## Opening, folding and smooth printed contours
 
 Fresh presentation starts with a real folded board and visible back cover. The accessible Open board/Fold board button remains available in every game phase. The right leaf rotates 180° about its centre hinge; board thickness, backside and printed-map geometry are real scene objects. Country surfaces, names, counters and outline segments that cross the crease are split onto the appropriate leaf, so nothing remains detached across the fold. A flush cardboard crease avoids obscuring the map labels.
+
+The folded view now presents a prominent **Open board** button, arrow and first-use click/tap/keyboard instruction directly over the table. A visible Open/Fold text label stays in the header on phones as well as desktops. The primary opening action is idempotent, so a double click cannot close the board again; its pointer input is isolated from the orbit surface. The header control still intentionally supports reversing a fold in progress.
 
 Folding is local presentation only. It preserves armies, cards, selections, camera and preferences and sends no game order. Other players and AI follow the existing turn rules while a board is closed; reopening displays the newest server state. Pieces remain parented at their saved leaf positions and are concealed when the closing cardboard would cover/intersect them, then restored on opening. The board itself never fades or scales to imitate folding. Territory interaction and command submission are blocked while closed or moving; folding cancels only cosmetic troop motion.
 

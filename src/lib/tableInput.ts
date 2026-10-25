@@ -33,7 +33,8 @@ export function createOrbitDrag<View extends TableOrbitView>(view: View, pointer
 
 /**
  * Screen-space gestures have the same direction at every board orientation.
- * Right swivels the far edge right; up raises the view toward overhead. Using
+ * Direct mouse and one-finger drags use reversed axes: right swivels the far
+ * edge left; down raises the view toward overhead. Using
  * the full drag from its anchor avoids event-rate drift and stale incremental
  * React state. Yaw stays continuous across a full turn instead of wrapping.
  */
@@ -42,8 +43,8 @@ export function orbitFromDrag<View extends TableOrbitView>(drag: TableOrbitDrag<
   const vertical = (pointer.y - drag.pointer.y) / drag.viewport.height;
   return {
     ...drag.view,
-    rotation: drag.view.rotation + horizontal * Math.PI,
-    tilt: Math.max(TABLE_TILT_MIN, Math.min(TABLE_TILT_MAX, drag.view.tilt - vertical * 60)),
+    rotation: drag.view.rotation - horizontal * Math.PI,
+    tilt: Math.max(TABLE_TILT_MIN, Math.min(TABLE_TILT_MAX, drag.view.tilt + vertical * 60)),
   } as View;
 }
 

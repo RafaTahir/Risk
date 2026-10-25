@@ -192,7 +192,7 @@ async function drag(page: Page, from: { x: number; y: number }, to: { x: number;
   await settleCamera(page);
 }
 
-test('printed surface typography follows the board while captured mouse orbit and tilt stay coupled to the pointer', async ({ page, request }, info) => {
+test('printed surface typography follows the board while captured mouse orbit and tilt use reversed drag axes', async ({ page, request }, info) => {
   const game = await humanRoom(request);
   const actions = observeActions(page);
   await openSeat(page, game.actor);
@@ -209,13 +209,13 @@ test('printed surface typography follows the board while captured mouse orbit an
   await drag(page, anchor, { x: anchor.x + 120, y: anchor.y });
   const right = await stats(page);
   expect(right.fitDistance).toBe(initial.fitDistance);
-  expect(right.rotation - initial.rotation).toBeCloseTo(120 / viewport.width * Math.PI, 2);
+  expect(right.rotation - initial.rotation).toBeCloseTo(-120 / viewport.width * Math.PI, 2);
   const angle = sampleAngle(right.surfaceLabelSamples.find(sample => sample.id === 'north-africa')!);
   expect(Math.abs(angle - sampleAngle(labelSample))).toBeGreaterThan(.02);
   await drag(page, anchor, { x: anchor.x - 120, y: anchor.y });
   expect((await stats(page)).rotation).toBeCloseTo(initial.rotation, 2);
   await drag(page, anchor, { x: anchor.x, y: anchor.y - 80 });
-  expect((await stats(page)).tilt - initial.tilt).toBeCloseTo(80 / viewport.height * 60, 2);
+  expect((await stats(page)).tilt - initial.tilt).toBeCloseTo(-80 / viewport.height * 60, 2);
   expect((await stats(page)).fitDistance).toBe(initial.fitDistance);
   await drag(page, anchor, { x: anchor.x, y: anchor.y + 80 });
   expect((await stats(page)).tilt).toBeCloseTo(initial.tilt, 2);
@@ -288,10 +288,10 @@ test('touch orbit, pinch and one-finger rebase keep the physical board controlla
     await expect(page.locator('.board3d-labels text')).toHaveCount(0);
     const initial = await stats(page);
     await touchSequence(page, [{ x: 180, y: 350, id: 0 }], [[{ x: 210, y: 350, id: 0 }], [{ x: 240, y: 350, id: 0 }]]);
-    await expect.poll(async () => (await stats(page)).rotation - initial.rotation).toBeCloseTo(60 / 390 * Math.PI, 2);
+    await expect.poll(async () => (await stats(page)).rotation - initial.rotation).toBeCloseTo(-60 / 390 * Math.PI, 2);
     const beforeUp = await stats(page);
     await touchSequence(page, [{ x: 180, y: 350, id: 0 }], [[{ x: 180, y: 325, id: 0 }], [{ x: 180, y: 300, id: 0 }]]);
-    await expect.poll(async () => (await stats(page)).tilt - beforeUp.tilt).toBeCloseTo(50 / 844 * 60, 2);
+    await expect.poll(async () => (await stats(page)).tilt - beforeUp.tilt).toBeCloseTo(-50 / 844 * 60, 2);
     const beforePinch = await stats(page);
     const client = await touchSequence(page, [{ x: 145, y: 360, id: 0 }, { x: 245, y: 360, id: 1 }], [
       [{ x: 135, y: 360, id: 0 }, { x: 255, y: 360, id: 1 }],
@@ -301,7 +301,7 @@ test('touch orbit, pinch and one-finger rebase keep the physical board controlla
       const pinched = await stats(page);
       expect(pinched.zoom).toBeGreaterThan(beforePinch.zoom);
       await client!.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 135, y: 360, id: 0, radiusX: 2, radiusY: 2, force: 1 }] });
-      await expect.poll(async () => (await stats(page)).rotation - pinched.rotation).toBeCloseTo(15 / 390 * Math.PI, 2);
+      await expect.poll(async () => (await stats(page)).rotation - pinched.rotation).toBeCloseTo(-15 / 390 * Math.PI, 2);
       await client!.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     } finally { await client!.detach(); }
     await page.getByRole('button', { name: 'Reset table view', exact: true }).tap();
@@ -312,8 +312,8 @@ test('touch orbit, pinch and one-finger rebase keep the physical board controlla
     await capture(page, info, 'mobile-overview');
     const overview = await stats(page);
     // The long-axis overview turns the printed board with the phone. A real
-    // leftward swivel brings its surface lettering upright for closer reading.
-    await touchSequence(page, [{ x: 290, y: 330, id: 0 }], [[{ x: 192, y: 330, id: 0 }], [{ x: 95, y: 330, id: 0 }]]);
+    // rightward drag with reversed swivel brings its lettering upright for closer reading.
+    await touchSequence(page, [{ x: 95, y: 330, id: 0 }], [[{ x: 193, y: 330, id: 0 }], [{ x: 290, y: 330, id: 0 }]]);
     await expect.poll(async () => (await stats(page)).rotation).toBeCloseTo(overview.rotation - Math.PI / 2, 2);
     await page.getByRole('button', { name: 'Zoom in', exact: true }).tap();
     await page.getByRole('button', { name: 'Zoom in', exact: true }).tap();

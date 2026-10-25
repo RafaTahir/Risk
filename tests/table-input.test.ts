@@ -20,16 +20,16 @@ function projectFarBoardPoint(cameraView: typeof view, originRotation: number) {
 }
 
 describe('screen-space tabletop orbit', () => {
-  it('couples right/left swivel and up/down tilt to the pointer, with pan and zoom unchanged', () => {
+  it('reverses right/left swivel and up/down tilt relative to the pointer, with pan and zoom unchanged', () => {
     const anchor = createOrbitDrag(view, point, desktop);
     const right = orbitFromDrag(anchor, { x: point.x + 120, y: point.y });
     const left = orbitFromDrag(anchor, { x: point.x - 120, y: point.y });
     const up = orbitFromDrag(anchor, { x: point.x, y: point.y - 80 });
     const down = orbitFromDrag(anchor, { x: point.x, y: point.y + 80 });
-    expect(right.rotation).toBeCloseTo(view.rotation + Math.PI / 10);
-    expect(left.rotation).toBeCloseTo(view.rotation - Math.PI / 10);
-    expect(up.tilt).toBe(56);
-    expect(down.tilt).toBe(44);
+    expect(right.rotation).toBeCloseTo(view.rotation - Math.PI / 10);
+    expect(left.rotation).toBeCloseTo(view.rotation + Math.PI / 10);
+    expect(up.tilt).toBe(44);
+    expect(down.tilt).toBe(56);
     for (const result of [right, left, up, down]) {
       expect(result).toMatchObject({ zoom: view.zoom, x: view.x, y: view.y });
     }
@@ -49,12 +49,12 @@ describe('screen-space tabletop orbit', () => {
   it('does not invert screen axes when the board passes a full turn or faces the opposite side', () => {
     for (const rotation of [-Math.PI, 0, Math.PI / 2, Math.PI, Math.PI * 2 - .01, Math.PI * 5]) {
       const result = orbitFromDrag(createOrbitDrag({ ...view, rotation }, point, desktop), { x: point.x + 120, y: point.y - 80 });
-      expect(result.rotation - rotation).toBeCloseTo(Math.PI / 10);
-      expect(result.tilt).toBe(56);
+      expect(result.rotation - rotation).toBeCloseTo(-Math.PI / 10);
+      expect(result.tilt).toBe(44);
     }
   });
 
-  it('moves the visible far board edge with the hand using the actual orbital camera projection', () => {
+  it('moves the visible far board edge opposite the hand using the actual orbital camera projection', () => {
     for (const rotation of [0, Math.PI / 2, Math.PI, Math.PI * 2 - .01]) {
       const start = { ...view, rotation };
       const anchor = createOrbitDrag(start, point, desktop);
@@ -62,9 +62,9 @@ describe('screen-space tabletop orbit', () => {
       const right = projectFarBoardPoint(orbitFromDrag(anchor, { x: point.x + 120, y: point.y }), rotation);
       const up = projectFarBoardPoint(orbitFromDrag(anchor, { x: point.x, y: point.y - 80 }), rotation);
       const down = projectFarBoardPoint(orbitFromDrag(anchor, { x: point.x, y: point.y + 80 }), rotation);
-      expect(right.x).toBeGreaterThan(before.x);
-      expect(up.y).toBeGreaterThan(before.y); // NDC +Y is toward the top of the screen.
-      expect(down.y).toBeLessThan(before.y);
+      expect(right.x).toBeLessThan(before.x);
+      expect(up.y).toBeLessThan(before.y); // NDC +Y is toward the top of the screen.
+      expect(down.y).toBeGreaterThan(before.y);
     }
   });
 
@@ -78,8 +78,8 @@ describe('screen-space tabletop orbit', () => {
 
   it('clamps tilt away from horizontal or the underside and reverses without accumulating clamp drift', () => {
     const anchor = createOrbitDrag(view, point, desktop);
-    expect(orbitFromDrag(anchor, { ...point, y: -2000 }).tilt).toBe(TABLE_TILT_MAX);
-    expect(orbitFromDrag(anchor, { ...point, y: 2000 }).tilt).toBe(TABLE_TILT_MIN);
+    expect(orbitFromDrag(anchor, { ...point, y: -2000 }).tilt).toBe(TABLE_TILT_MIN);
+    expect(orbitFromDrag(anchor, { ...point, y: 2000 }).tilt).toBe(TABLE_TILT_MAX);
     expect(orbitFromDrag(anchor, point)).toEqual(view);
   });
 
@@ -90,7 +90,7 @@ describe('screen-space tabletop orbit', () => {
     const rebased = createOrbitDrag(newView, remainingTouch, { width: 390, height: 844 });
     expect(orbitFromDrag(rebased, remainingTouch)).toEqual(newView);
     const after = orbitFromDrag(rebased, { x: 319, y: 600 });
-    expect(after.rotation - newView.rotation).toBeCloseTo(Math.PI / 10);
+    expect(after.rotation - newView.rotation).toBeCloseTo(-Math.PI / 10);
     expect(after).toMatchObject({ tilt: newView.tilt, zoom: 2.5, x: -80, y: 65 });
   });
 
@@ -99,7 +99,7 @@ describe('screen-space tabletop orbit', () => {
     const anchor = createOrbitDrag(mutableView, mutablePoint, mutableViewport);
     mutableView.rotation = 4; mutablePoint.x = -900; mutableViewport.width = 40;
     expect(orbitFromDrag(anchor, point)).toEqual(view);
-    expect(orbitFromDrag(anchor, { x: point.x + 120, y: point.y }).rotation).toBeCloseTo(view.rotation + Math.PI / 10);
+    expect(orbitFromDrag(anchor, { x: point.x + 120, y: point.y }).rotation).toBeCloseTo(view.rotation - Math.PI / 10);
   });
 });
 
