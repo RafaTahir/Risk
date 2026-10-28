@@ -320,3 +320,8 @@ html[data-motion=reduced] *,html[data-motion=reduced] *::before,html[data-motion
 @media(max-width:600px) { .board-fold-toggle > .fold-label-full { display: none; } .board-fold-toggle > .fold-label-compact { display: inline; } .board-fold-toggle { gap: 5px; padding: 8px; font-size: 10px; } .turn-status { min-width: 0; flex: 0 1 140px; } .turn-status b { max-width: 100%; } .fold-open-prompt { top: 63%; max-width: 310px; padding: 14px 15px; } .fold-open-cta { min-height: 56px; } }
 @media(max-width:360px) { .table-brand { font-size: 21px; gap: 3px; } .turn-status { max-width: 115px; padding: 7px 8px; } .turn-counter { display: none; } .hud-actions { gap: 4px; } .board-fold-toggle { padding: 8px 6px; } }
 @media(max-height:520px) and (min-width:600px) { .fold-open-prompt { top: 62%; width: 300px; padding: 10px 13px; } .fold-open-indicator { margin-bottom: 6px; } .fold-open-cta { min-height: 46px; padding: 8px 13px; font-size: 15px; } .fold-open-prompt p { margin-top: 6px; font-size: 10px; } }
+.renderer-status { margin: 3px 0 12px; padding: 13px 15px; border: 1px solid #d6c29060; border-radius: 8px; background: #131e17; font-size: 12px; }
+.renderer-status b { color: #f0dfba; }
+.renderer-status p { margin-top: 7px; color: #ccd4bf; line-height: 1.7; font-size: 11px; }
+.renderer-status .button { margin-top: 12px; min-height: 44px; }
+.settings-row select:disabled { opacity: .5; cursor: not-allowed; }

@@ -90,7 +90,7 @@ npm run dev:worker
 
 The local Worker serves the production UI and real D1 API together on internal port3001. Local D1 files are under `.worker-local/d1`, excluded from Git and release packages. The browser discovers `/api/transport` and switches automatically; there is no hardcoded external API endpoint.
 
-Run `RISK_TEST_BASE_URL=http://127.0.0.1:3001 RISK_TEST_HTTP=1 npm run test:browser` for the Worker browser flows. `npm test` includes100 automated checks across the rules/AI, tactical-affordance, socket, concurrency/security, and actual workerd/D1 suites. Node browser runs execute four shared cases and skip twenty-four HTTP-only cases; Worker runs include all28. See the validation report for the suites rerun for each release.
+Run `RISK_TEST_BASE_URL=http://127.0.0.1:3001 RISK_TEST_HTTP=1 npm run test:browser` for the Worker browser flows. `npm test` includes100 automated checks across the rules/AI, tactical-affordance, socket, concurrency/security, and actual workerd/D1 suites. Node browser runs execute four shared cases and skip twenty-six HTTP-only cases; Worker runs include all30. See the validation report for the suites rerun for each release.
 
 Deployment inputs are `dist/` browser assets, `dist-worker/worker.js`, logical D1 binding `DB`, and `migrations/0001_rooms.sql`. The parent task has the Sites tools and verified manifest schema; this child produces the tested source/artifacts but does not provision or publish the site. See [the complete Worker guide](docs/SITES.md) and [current release handoff](docs/RELEASE-HANDOFF.md).
 
@@ -113,3 +113,5 @@ Country names are printed on the actual 3D country surfaces and follow the board
 The board now starts genuinely folded. Follow the prominent **Open board** prompt to reveal the map, then start or join play. The visible header Open/Fold control folds/reopens the four physical panels during a game without resetting armies, cards, camera or preferences. Mouse and one-finger drag swivel/tilt use the requested reversed directions; wheel and pinch zoom remain unchanged. Other players can continue taking their turns; reopening shows the current authoritative room. Country outlines use shared, rounded contours consistently for print, rendering and picking. See [folding and contour details](docs/PHYSICAL-BOARD.md).
 
 Confirmed army actions now include staged setup from player trays, pickup/placement, and both attacking and defending figures. Reserve pieces reflect actual unplaced armies; multiplayer clients replay bounded public outcomes from the server. See [four-panel presentation details](docs/PHYSICAL-BOARD.md).
+
+Display settings show the active renderer separately from your saved preference, with an explanation and retry when3D is unavailable. Printed and tactical-map labels use stronger contrast; optional first-turn help opens the legal-move and dice guide without issuing orders.

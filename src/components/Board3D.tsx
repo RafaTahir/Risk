@@ -14,7 +14,7 @@ import './Board3D.css';
 
 export interface BoardMotion { id: string; type: 'attack' | 'move' | 'deploy' | 'conquest' | 'setup'; from?: string; to: string; count: number; color: string; playerId?: string; defenderColor?: string; attackerLoss?: number; defenderLoss?: number; attackDice?: number[]; defenseDice?: number[]; placements?: {territory:string;owner:string;count:number}[] }
 export interface BoardFoldState { folded: boolean; transitioning: boolean }
-interface Props { game: GameState | null; selected: string | null; target: string | null; validTargets: string[]; eligibleSources?: string[]; onSelect: (id: string) => void; interactive?: boolean; quality: 'low' | 'high'; highContrast?: boolean; reducedMotion: boolean; motion: BoardMotion | null; onMotionEnd?: () => void; folded: boolean; foldRevision?: number; onFoldStateChange?: (state: BoardFoldState) => void }
+interface Props { onRendererChange?: (renderer: 'loading' | 'webgl' | 'fallback') => void; game: GameState | null; selected: string | null; target: string | null; validTargets: string[]; eligibleSources?: string[]; onSelect: (id: string) => void; interactive?: boolean; quality: 'low' | 'high'; highContrast?: boolean; reducedMotion: boolean; motion: BoardMotion | null; onMotionEnd?: () => void; folded: boolean; foldRevision?: number; onFoldStateChange?: (state: BoardFoldState) => void }
 interface TableView { zoom: number; x: number; y: number; rotation: number; tilt: number }
 interface BoardApi { update: () => void; animate: () => void; view: () => void; fit: () => void; fold: () => void; hit: (x: number, y: number) => string | undefined; pan: (dx: number, dy: number) => {x: number; y: number} }
 type MapPoint = { x: number; y: number };
@@ -62,6 +62,7 @@ export default function Board3D(props: Props) {
   useEffect(() => {
     if (!host.current || failed) return;
     const container = host.current;
+    current.current.onRendererChange?.('loading');
     let renderer: THREE.WebGLRenderer;
     try { renderer = new THREE.WebGLRenderer({ antialias: props.quality === 'high', alpha: false, powerPreference: 'low-power' }); }
     catch { setFailed(true); return; }
@@ -442,7 +443,7 @@ export default function Board3D(props: Props) {
     renderer.domElement.addEventListener('pointermove',pointerMove);renderer.domElement.addEventListener('pointerleave',pointerLeave);renderer.domElement.addEventListener('webglcontextlost',lost);
     const wheel=(e:WheelEvent) => {if((e.target as Element).closest('.board3d-controls'))return;e.preventDefault();const next=boundView({...viewRef.current,zoom:viewRef.current.zoom*Math.exp(-e.deltaY*.0015)});viewRef.current=next;setView(next);resize();};
     const root=stage.current;root?.addEventListener('wheel',wheel,{passive:false});
-    const observer=new ResizeObserver(resize);observer.observe(container);applyFoldPose(foldProgress.current);resize();update();animate();fold();
+    const observer=new ResizeObserver(resize);observer.observe(container);applyFoldPose(foldProgress.current);resize();update();animate();fold();current.current.onRendererChange?.('webgl');
     return () => {
       disposed=true;api.current=null;cancelAnimationFrame(frame);observer.disconnect();root?.removeEventListener('wheel',wheel);
       renderer.domElement.removeEventListener('webglcontextlost',lost);renderer.domElement.removeEventListener('pointermove',pointerMove);renderer.domElement.removeEventListener('pointerleave',pointerLeave);
@@ -450,6 +451,7 @@ export default function Board3D(props: Props) {
       const descriptor=Object.getOwnPropertyDescriptor(window,'__riskBoardStats');if(descriptor?.get===statsGetter)Reflect.deleteProperty(window,'__riskBoardStats');
     };
   },[props.quality,props.highContrast,failed]);
+  useEffect(()=>{if(failed)props.onRendererChange?.('fallback');},[failed,props.onRendererChange]);
   useEffect(()=>{api.current?.update();},[props.game,props.selected,props.target,props.validTargets,props.eligibleSources]);
   useEffect(()=>{
     // Fallback/context loss has no render loop to complete queued piece motion.

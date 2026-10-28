@@ -11,18 +11,18 @@ export const PRINTED_COLORS: Record<string, string> = {
 export interface SurfaceLabel { x: number; y: number; lines: string[]; size: number; angle?: number }
 const placements: Record<string, Partial<SurfaceLabel>> = {
   alaska: { y: 119, size: 10 },
-  'northwest-territory': { y: 106, lines: ['NORTHWEST', 'TERRITORY'], size: 8 },
-  greenland: { x: 374, y: 103, size: 8.5 },
+  'northwest-territory': { y: 104, lines: ['NORTHWEST', 'TERRITORY'], size: 8 },
+  greenland: { x: 374, y: 99, size: 8.5 },
   alberta: { y: 151, size: 9 }, ontario: { y: 153, size: 9 }, quebec: { y: 171, size: 8 },
   'western-united-states': { x: 196, y: 213, lines: ['WESTERN', 'UNITED STATES'], size: 7.6 },
   'eastern-united-states': { x: 286, y: 217, lines: ['EASTERN', 'UNITED STATES'], size: 7 },
-  'central-america': { x: 257, y: 285, lines: ['CENTRAL', 'AMERICA'], size: 6.8, angle: .58 },
+  'central-america': { x: 255, y: 275, lines: ['CENTRAL', 'AMERICA'], size: 6.8, angle: .58 },
   venezuela: { y: 337, size: 8.5 }, peru: { y: 393, size: 10 }, brazil: { y: 382, size: 11 },
   argentina: { x: 372, y: 478, size: 7.3 }, iceland: { y: 123, size: 7 },
   'great-britain': { x: 507, y: 180, lines: ['GREAT', 'BRITAIN'], size: 6.4 },
   scandinavia: { x: 586, y: 118, size: 7, angle: -.68 },
-  'northern-europe': { y: 180, lines: ['NORTHERN', 'EUROPE'], size: 7 },
-  'western-europe': { x: 531, y: 240, lines: ['WESTERN', 'EUROPE'], size: 6.8 },
+  'northern-europe': { y: 178, lines: ['NORTHERN', 'EUROPE'], size: 7 },
+  'western-europe': { x: 531, y: 238, lines: ['WESTERN', 'EUROPE'], size: 6.8 },
   'southern-europe': { x: 594, y: 233, lines: ['SOUTHERN', 'EUROPE'], size: 6.8 },
   ukraine: { x: 653, y: 160, size: 10 },
   'north-africa': { x: 538, y: 325, lines: ['NORTH', 'AFRICA'], size: 9.6 },
@@ -33,30 +33,37 @@ const placements: Record<string, Partial<SurfaceLabel>> = {
   kamchatka: { x: 969, y: 125, size: 7.5 }, irkutsk: { x: 873, y: 151, size: 8.5 },
   mongolia: { x: 891, y: 207, size: 9 }, japan: { x: 1004, y: 251, size: 7, angle: -.98 },
   afghanistan: { x: 746, y: 233, size: 7.3 }, china: { x: 855, y: 274, size: 11 },
-  'middle-east': { x: 698, y: 293, lines: ['MIDDLE', 'EAST'], size: 8.5 },
+  'middle-east': { x: 698, y: 285, lines: ['MIDDLE', 'EAST'], size: 8.5 },
   india: { x: 800, y: 325, size: 9 }, siam: { x: 880, y: 345, size: 8 },
-  indonesia: { x: 875, y: 435, size: 6.2, angle: .18 },
-  'new-guinea': { x: 1000, y: 419, lines: ['NEW GUINEA'], size: 6.8, angle: .18 },
-  'western-australia': { x: 929, y: 489, lines: ['WESTERN', 'AUSTRALIA'], size: 8 },
+  indonesia: { x: 855, y: 425, size: 6.2, angle: .75 },
+  'new-guinea': { x: 994, y: 414, lines: ['NEW GUINEA'], size: 6.8, angle: .18 },
+  'western-australia': { x: 940, y: 492, lines: ['WESTERN', 'AUSTRALIA'], size: 8 },
   'eastern-australia': { x: 997, y: 488, lines: ['EASTERN', 'AUSTRALIA'], size: 8 },
 };
 export function surfaceLabel(territory: TerritoryDefinition): SurfaceLabel {
-  return { x: territory.x, y: territory.y - 11, lines: [territory.name.toUpperCase()], size: 8.5, ...placements[territory.id] };
+  const label = { x: territory.x, y: territory.y - 11, lines: [territory.name.toUpperCase()], size: 8.5, ...placements[territory.id] };
+  // Country-specific layout stays in map space; a small type increase helps at
+  // ordinary zoom without turning narrow islands into oversized labels.
+  return { ...label, size: label.size * 1.12 };
 }
 export function labelCorners(territory: TerritoryDefinition) {
-  const label = surfaceLabel(territory), width = Math.max(...label.lines.map(line => line.length)) * label.size * .59;
+  const label = surfaceLabel(territory), width = Math.max(...label.lines.map(line => line.length)) * label.size * .64 + 1.2;
   const height = label.lines.length * label.size * 1.05, angle = label.angle || 0;
   return [[-width / 2, -height / 2], [width / 2, -height / 2], [width / 2, height / 2], [-width / 2, height / 2]].map(([x, y]) => ({ x: label.x + x * Math.cos(angle) - y * Math.sin(angle), y: label.y + x * Math.sin(angle) + y * Math.cos(angle) }));
 }
 export function paintNames(context: CanvasRenderingContext2D, scale: number, clear = true, contrast = false) {
   context.setTransform(scale, 0, 0, scale, 0, 0); if (clear) context.clearRect(0, 0, 1100, 640);
-  context.fillStyle = contrast ? '#0b0c09' : '#251f18'; context.textAlign = 'center'; context.textBaseline = 'middle';
+  context.fillStyle = contrast ? '#030704' : '#10150f'; context.textAlign = 'center'; context.textBaseline = 'middle';
   for (const territory of TERRITORIES) {
     const label = surfaceLabel(territory);
     context.save(); context.clip(new Path2D(boardContour(territory.id).path)); context.translate(label.x, label.y); context.rotate(label.angle || 0);
-    context.font = `700 ${label.size}px Georgia, serif`;
+    context.font = `700 ${label.size}px Arial, sans-serif`;
     const lineHeight = label.size * 1.05;
-    label.lines.forEach((line, index) => { const y=(index - (label.lines.length - 1) / 2) * lineHeight; if(contrast){context.strokeStyle='#0b0c09';context.lineWidth=.25;context.strokeText(line,0,y);}context.fillText(line, 0, y); });
+    // A fine parchment keyline separates ink from dark continent fills. It is
+    // painted into the same atlas and folds/tilts with the cardboard.
+    context.strokeStyle = contrast ? '#fff4d4' : '#f0dfb2';
+    context.lineWidth = contrast ? 1.8 : 1.15; context.lineJoin = 'round';
+    label.lines.forEach((line, index) => { const y = (index - (label.lines.length - 1) / 2) * lineHeight; context.strokeText(line, 0, y); context.fillText(line, 0, y); });
     context.restore();
   }
 }

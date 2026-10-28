@@ -16,6 +16,8 @@ interface GameDockProps {
   onCards: () => void;
   onClearSelection: () => void;
   onHint?: () => void;
+  showFirstTurnHelp?: boolean;
+  onDismissFirstTurnHelp?: () => void;
 }
 
 interface ArmyPickerProps {
@@ -51,7 +53,7 @@ function ArmyPicker({ value, minimum, maximum, disabled, onChange }: ArmyPickerP
 const phaseLabels = { reinforce: 'Reinforce', attack: 'Attack', occupy: 'Advance', fortify: 'Fortify', gameover: 'Victory' };
 const diceIcons = [Dice1, Dice2, Dice3];
 
-export default function GameDock({ game, me, selected, target, myTurn, pending, act, onCards, onClearSelection, onHint }: GameDockProps) {
+export default function GameDock({ game, me, selected, target, myTurn, pending, act, onCards, onClearSelection, onHint, showFirstTurnHelp, onDismissFirstTurnHelp }: GameDockProps) {
   const [count, setCount] = useState(1);
   const [dice, setDice] = useState(3);
   const origin = selected ? game.territories[selected] : undefined;
@@ -125,6 +127,7 @@ export default function GameDock({ game, me, selected, target, myTurn, pending, 
   else if (canAttack && destination) actionPreview = `${actualDice} attack ${actualDice === 1 ? 'die' : 'dice'} vs ${Math.min(2, destination.armies)} defense · ties defend · leave 1 behind`;
 
   return <aside className={`cdock cdock-active cdock-${game.phase}${mustTrade ? ' cdock-trade-required' : ''}`} aria-label="Turn controls" aria-busy={pending}>
+    {showFirstTurnHelp && !selected && onHint && <div className="cdock-first-guide" data-testid="first-turn-guide"><span>First turn?</span><button type="button" onClick={onHint} aria-label="Show legal moves"><CircleHelp size={16}/>Show legal moves</button><button type="button" aria-label="Dismiss first-turn guide" onClick={onDismissFirstTurnHelp}><X size={16}/></button></div>}
     <div className="cdock-heading">
       <div className="cdock-overview">
         <div className="cdock-phase"><span>{phaseLabels[game.phase]}</span><span className="cdock-phase-detail">{phaseDetail}</span></div>

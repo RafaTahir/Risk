@@ -126,3 +126,8 @@
   .cdock-active .cdock-secondary { padding: 0 8px; font-size: 10px; }
   .cdock-active .cdock-controls-quiet { margin-top: 0; }
 }
+.cdock-first-guide { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid #e7bd762c; font-size: 11px; }
+.cdock-first-guide > span { color: #d5c8af; flex: 1; }
+.cdock-first-guide button { gap: 7px; padding: 0 10px; color: #f0d499; border: 1px solid #e7bd7640; }
+.cdock-first-guide button:last-child { padding: 0; border-color: transparent; color: #cbc9b9; }
+@media(max-height:520px) { .cdock-first-guide { padding-bottom: 3px; margin-bottom: 4px; } }
