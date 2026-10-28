@@ -8,24 +8,16 @@ import WorldMap from './WorldMap';
 import { PRINTED_COLORS, labelCorners, paintCounters, paintNames, paintOcean } from './boardSurface';
 import { createOrbitDrag, isTableDrag, orbitFromDrag, type TableOrbitDrag } from '../lib/tableInput';
 import { boardContour } from '../lib/boardContours';
+import { boardFoldPose, boardPanel, clipPanelRing, clipPanelSegment, PANEL_BOUNDS } from '../lib/boardFold';
+import { reserveArmyCount, reserveAnchor, reservePieces, initialArmyAllowance, setupPlacements } from '../lib/armyPresentation';
 import './Board3D.css';
 
-export interface BoardMotion { id: string; type: 'attack' | 'move' | 'deploy' | 'conquest'; from?: string; to: string; count: number; color: string }
+export interface BoardMotion { id: string; type: 'attack' | 'move' | 'deploy' | 'conquest' | 'setup'; from?: string; to: string; count: number; color: string; playerId?: string; defenderColor?: string; attackerLoss?: number; defenderLoss?: number; attackDice?: number[]; defenseDice?: number[]; placements?: {territory:string;owner:string;count:number}[] }
 export interface BoardFoldState { folded: boolean; transitioning: boolean }
 interface Props { game: GameState | null; selected: string | null; target: string | null; validTargets: string[]; eligibleSources?: string[]; onSelect: (id: string) => void; interactive?: boolean; quality: 'low' | 'high'; highContrast?: boolean; reducedMotion: boolean; motion: BoardMotion | null; onMotionEnd?: () => void; folded: boolean; foldRevision?: number; onFoldStateChange?: (state: BoardFoldState) => void }
 interface TableView { zoom: number; x: number; y: number; rotation: number; tilt: number }
 interface BoardApi { update: () => void; animate: () => void; view: () => void; fit: () => void; fold: () => void; hit: (x: number, y: number) => string | undefined; pan: (dx: number, dy: number) => {x: number; y: number} }
 type MapPoint = { x: number; y: number };
-function clipRingToLeaf(points: readonly MapPoint[], leaf: number): MapPoint[] {
-  const result: MapPoint[]=[];
-  const inside=(p:MapPoint)=>leaf===0?p.x<=550:p.x>=550;
-  for(let i=0;i<points.length;i++) {
-    const previous=points[(i+points.length-1)%points.length],current=points[i],a=inside(previous),b=inside(current);
-    if(a!==b) { const t=(550-previous.x)/(current.x-previous.x); result.push({x:550,y:previous.y+(current.y-previous.y)*t}); }
-    if(b) result.push(current);
-  }
-  return result.filter((p,i)=>i===0 || Math.hypot(p.x-result[i-1].x,p.y-result[i-1].y)>1e-7).filter((p,i,a)=>i!==a.length-1 || a.length<2 || Math.hypot(p.x-a[0].x,p.y-a[0].y)>1e-7);
-}
 const leafShape=(ring:MapPoint[])=>{const shape=new THREE.Shape();ring.forEach((p,i)=>{const value=point(p.x,p.y);if(i===0)shape.moveTo(value.x,value.y);else shape.lineTo(value.x,value.y);});shape.closePath();return shape;};
 const point = (x: number, y: number, z = 0) => new THREE.Vector3(x - 550, 320 - y, z);
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
@@ -89,31 +81,33 @@ export default function Board3D(props: Props) {
     const brass = material('#24251f',.05,.83), wood = material('#343129',.02,.92), darkWood = material('#171b19',.02,.93);
     const side = material('#63543b',.02,.92), ocean = material('#d1bd8e',.01,.96);
     const table = new THREE.Group(); scene.add(table);
-    const halves = [new THREE.Group(),new THREE.Group()];
-    const hingeHeight=5.5,rightHinge=new THREE.Group();rightHinge.position.z=hingeHeight;
-    halves[1].position.z=-hingeHeight;rightHinge.add(halves[1]);table.add(halves[0],rightHinge);
-    const halfFor = (x: number) => halves[x < 0 ? 0 : 1];
+    const halves = Array.from({length:4},()=>new THREE.Group());
+    // A three-hinge snake joins four quarters. The NE free corner folds
+    // south, the right pair folds west, then the lower stack folds north.
+    // One centre edge stays free, as on a physical quarter-fold game board.
+    const lowerHinge=new THREE.Group(),lowerFrame=new THREE.Group(),rightHinge=new THREE.Group(),rightFrame=new THREE.Group(),upperHinge=new THREE.Group();
+    lowerHinge.position.z=18.5;lowerFrame.position.z=-18.5;lowerHinge.add(lowerFrame);table.add(halves[0],lowerHinge);
+    rightHinge.position.z=12.5;rightFrame.position.z=-12.5;rightHinge.add(rightFrame);lowerFrame.add(halves[2],rightHinge);
+    upperHinge.position.z=5.5;halves[1].position.z=-5.5;upperHinge.add(halves[1]);rightFrame.add(halves[3],upperHinge);
+    const halfFor = (x: number,y: number) => halves[boardPanel(x+550,320-y)];
     const addBox = (parent: THREE.Group | THREE.Scene, width: number, height: number, depth: number, x: number, y: number, z: number, mat: THREE.Material) => {
       const mesh = new THREE.Mesh(keep(new THREE.BoxGeometry(width,height,depth)),mat); mesh.position.set(x,y,z); parent.add(mesh); return mesh;
     };
-    // The two real board leaves share a centre hinge. Every territory and piece belongs to its leaf.
     halves.forEach((half,index) => {
-      const direction = index === 0 ? -1 : 1, centre = direction * 284;
-      addBox(half,566,660,8,centre,0,-5,wood);
-      addBox(half,569,663,1.5,centre,0,-9.5,darkWood);
-      addBox(half,566,659,1.2,centre,0,-.8,brass);
-      addBox(half,552,637,1.2,direction*277,0,-.2,ocean);
-      addBox(half,565,3,1.5,centre,326,.2,brass); addBox(half,565,3,1.5,centre,-326,.2,brass);
-      addBox(half,3,652,1.5,direction*565,0,.2,brass);
-      addBox(half,1.2,637,.3,direction*1.2,0,.55,side);
-      // Small reserve trays keep the tabletop equipment close to the map.
-      const trayX = direction * 610;
-      addBox(half,68,214,7,trayX,-26,-5,wood);
-      addBox(half,61,206,1,trayX,-26,-1,darkWood);
-      addBox(half,3,212,5,trayX-direction*33,-26,-.5,brass);
-      addBox(half,3,212,5,trayX+direction*33,-26,-.5,brass);
-      addBox(half,65,3,5,trayX,-131,-.5,brass); addBox(half,65,3,5,trayX,79,-.5,brass);
+      const direction=index%2===0?-1:1,north=index<2?1:-1,centre=direction*284,cy=north*165;
+      addBox(half,566,330,8,centre,cy,-5,wood);
+      addBox(half,569,330,1.5,centre,cy,-9.5,darkWood);
+      addBox(half,566,329,1.2,centre,cy,-.8,brass);
+      addBox(half,552,319,1.2,direction*277,north*160,-.2,ocean);
+      addBox(half,565,3,1.5,centre,north*326,.2,brass);
+      addBox(half,3,328,1.5,direction*565,cy,.2,brass);
+      addBox(half,1.2,319,.3,direction*1.2,north*160,.55,side);
+      addBox(half,551,1.2,.2,direction*276,north*.6,.6,side);
     });
+    // Equipment rests on the table, independent of the moving cardboard.
+    const equipment=new THREE.Group();scene.add(equipment);
+    const trays:THREE.Group[]=Array.from({length:6},()=>new THREE.Group());
+    trays.forEach(tray=>{equipment.add(tray);addBox(tray,76,112,7,0,0,-5,wood);addBox(tray,69,105,1,0,0,-1,darkWood);addBox(tray,3,112,5,-37,0,-.5,brass);addBox(tray,3,112,5,37,0,-.5,brass);addBox(tray,73,3,5,0,-55,-.5,brass);addBox(tray,73,3,5,0,55,-.5,brass);});
     const coverCanvas=document.createElement('canvas');coverCanvas.width=512;coverCanvas.height=640;
     const coverContext=coverCanvas.getContext('2d');
     if(coverContext) {
@@ -125,11 +119,8 @@ export default function Board3D(props: Props) {
       coverContext.beginPath();coverContext.moveTo(256,346);coverContext.lineTo(264,400);coverContext.lineTo(318,408);coverContext.lineTo(264,416);coverContext.lineTo(256,470);coverContext.lineTo(248,416);coverContext.lineTo(194,408);coverContext.lineTo(248,400);coverContext.closePath();coverContext.stroke();
       const coverTexture=keep(new THREE.CanvasTexture(coverCanvas));coverTexture.colorSpace=THREE.SRGBColorSpace;
       const coverMaterial=keep(new THREE.MeshStandardMaterial({map:coverTexture,roughness:.9,metalness:.02}));
-      halves.forEach((half,index)=>{const geometry=keep(new THREE.PlaneGeometry(554,646).rotateZ(index===1?Math.PI:0).rotateX(Math.PI).translate(index===0?-284:284,0,-10.3));half.add(new THREE.Mesh(geometry,coverMaterial));});
+      halves.forEach((half,index)=>{const geometry=keep(new THREE.PlaneGeometry(554,316).rotateZ(index%2===1?Math.PI:0).rotateX(Math.PI).translate(index%2===0?-284:284,index<2?165:-165,-10.3));half.add(new THREE.Mesh(geometry,coverMaterial));});
     }
-    // A cardboard crease is flush with the print; the invisible pivot remains
-    // above it to give the two real board backs their closing clearance.
-    const hinge = new THREE.Mesh(keep(new THREE.BoxGeometry(1.4,658,.2)),side);hinge.position.z=.85;table.add(hinge);
     const floor = new THREE.Mesh(keep(new THREE.PlaneGeometry(12000,12000)),material('#182327',0,.98)); floor.position.z = -16; scene.add(floor);
     const shadowCanvas = document.createElement('canvas'); shadowCanvas.width = 128; shadowCanvas.height = 64;
     const ctx = shadowCanvas.getContext('2d');
@@ -138,21 +129,23 @@ export default function Board3D(props: Props) {
       const texture = keep(new THREE.CanvasTexture(shadowCanvas));
       const shadow = new THREE.Mesh(keep(new THREE.PlaneGeometry(1600,1040)),keep(new THREE.MeshBasicMaterial({map:texture,transparent:true,depthWrite:false}))); shadow.position.set(0,10,-15.9); scene.add(shadow);
     }
-    const gridPoints: number[][] = [[],[]];
-    for (let x = -550; x <= 550; x += 55) gridPoints[x < 0 ? 0 : 1].push(x,-315,.43,x,315,.43);
-    for (let y = -310; y <= 310; y += 55) { gridPoints[0].push(-550,y,.43,0,y,.43); gridPoints[1].push(0,y,.43,550,y,.43); }
-    gridPoints.forEach((points,i) => halves[i].add(new THREE.LineSegments(keep(new THREE.BufferGeometry().setAttribute('position',new THREE.Float32BufferAttribute(points,3))),keep(new THREE.LineBasicMaterial({color:'#856b40',transparent:true,opacity:.1})))));
-    const seaRoutes = [[393,122,490,125],[412,370,505,337],[511,265,514,311],[610,259,618,302],[879,381,864,427],[920,433,978,420],[947,449,947,480],[989,434,1002,479],[653,439,697,456],[647,385,703,451],[104,127,35,128],[1065,128,975,128]];
-    halves.forEach((half,i) => {
-      const routePoints: THREE.Vector3[] = []; seaRoutes.filter(([x]) => (x < 550 ? 0 : 1) === i).forEach(([x1,y1,x2,y2]) => routePoints.push(point(x1,y1,.44),point(x2,y2,.44)));
-      const routes = new THREE.LineSegments(keep(new THREE.BufferGeometry().setFromPoints(routePoints)),keep(new THREE.LineDashedMaterial({color:'#6d5431',transparent:true,opacity:.7,dashSize:4,gapSize:5}))); routes.computeLineDistances(); half.add(routes);
+    const addPrintedSegments=(segments:number[][],mat:THREE.LineBasicMaterial|THREE.LineDashedMaterial)=>halves.forEach((half,index)=>{
+      const vertices:THREE.Vector3[]=[];
+      segments.forEach(([x1,y1,x2,y2])=>{const clipped=clipPanelSegment({x:x1,y:y1},{x:x2,y:y2},index);if(clipped)vertices.push(...clipped.map(p=>point(p.x,p.y,.44)));});
+      const lines=new THREE.LineSegments(keep(new THREE.BufferGeometry().setFromPoints(vertices)),mat);if(mat instanceof THREE.LineDashedMaterial)lines.computeLineDistances();half.add(lines);
     });
-    const compassPoints: number[] = []; const compassX = -440, compassY = -40;
-    for (let i=0;i<48;i++) { const a=i/48*Math.PI*2,b=(i+1)/48*Math.PI*2; compassPoints.push(compassX+Math.cos(a)*31,compassY+Math.sin(a)*31,.45,compassX+Math.cos(b)*31,compassY+Math.sin(b)*31,.45); }
-    for (let i=0;i<4;i++) { const a=i*Math.PI/2,b=a+Math.PI/4,c=a-Math.PI/4; compassPoints.push(compassX+Math.cos(a)*39,compassY+Math.sin(a)*39,.45,compassX+Math.cos(b)*8,compassY+Math.sin(b)*8,.45,compassX+Math.cos(a)*39,compassY+Math.sin(a)*39,.45,compassX+Math.cos(c)*8,compassY+Math.sin(c)*8,.45); }
-    halves[0].add(new THREE.LineSegments(keep(new THREE.BufferGeometry().setAttribute('position',new THREE.Float32BufferAttribute(compassPoints,3))),keep(new THREE.LineBasicMaterial({color:'#735c37',transparent:true,opacity:.7}))));
+    const gridSegments:number[][]=[];
+    for(let x=0;x<=1100;x+=55)gridSegments.push([x,5,x,635]);
+    for(let y=10;y<=630;y+=55)gridSegments.push([0,y,1100,y]);
+    addPrintedSegments(gridSegments,keep(new THREE.LineBasicMaterial({color:'#856b40',transparent:true,opacity:.1})));
+    const seaRoutes = [[393,122,490,125],[412,370,505,337],[511,265,514,311],[610,259,618,302],[879,381,864,427],[920,433,978,420],[947,449,947,480],[989,434,1002,479],[653,439,697,456],[647,385,703,451],[104,127,35,128],[1065,128,975,128]];
+    addPrintedSegments(seaRoutes,keep(new THREE.LineDashedMaterial({color:'#6d5431',transparent:true,opacity:.7,dashSize:4,gapSize:5})));
+    const compassSegments:number[][]=[],compassX=110,compassY=360;
+    for(let i=0;i<48;i++){const a=i/48*Math.PI*2,b=(i+1)/48*Math.PI*2;compassSegments.push([compassX+Math.cos(a)*31,compassY+Math.sin(a)*31,compassX+Math.cos(b)*31,compassY+Math.sin(b)*31]);}
+    for(let i=0;i<4;i++){const a=i*Math.PI/2,b=a+Math.PI/4,c=a-Math.PI/4;compassSegments.push([compassX+Math.cos(a)*39,compassY+Math.sin(a)*39,compassX+Math.cos(b)*8,compassY+Math.sin(b)*8],[compassX+Math.cos(a)*39,compassY+Math.sin(a)*39,compassX+Math.cos(c)*8,compassY+Math.sin(c)*8]);}
+    addPrintedSegments(compassSegments,keep(new THREE.LineBasicMaterial({color:'#735c37',transparent:true,opacity:.7})));
     const meshes: THREE.Mesh[] = [], landMaterials: THREE.MeshStandardMaterial[] = [], outlineMaterials: THREE.LineBasicMaterial[] = [];
-    const printedLand: THREE.BufferGeometry[][] = [[],[]], counterSurfaces: THREE.BufferGeometry[][] = [[],[]];
+    const printedLand: THREE.BufferGeometry[][] = [[],[],[],[]], counterSurfaces: THREE.BufferGeometry[][] = [[],[],[],[]];
     const mapUV = (geometry: THREE.BufferGeometry) => { const positions=geometry.getAttribute('position'),uv=new Float32Array(positions.count*2); for(let i=0;i<positions.count;i++){uv[i*2]=(positions.getX(i)+550)/1100;uv[i*2+1]=(positions.getY(i)+320)/640;} geometry.setAttribute('uv',new THREE.BufferAttribute(uv,2)); return geometry; };
     let clippedCountryParts=0;
     TERRITORIES.forEach(t => {
@@ -160,21 +153,18 @@ export default function Board3D(props: Props) {
       const land=material(PRINTED_COLORS[t.continent],.01,.94);landMaterials.push(land);
       const lineMaterial=keep(new THREE.LineBasicMaterial({color:'#54482e',transparent:true,opacity:.88}));outlineMaterials.push(lineMaterial);
       halves.forEach((half,index)=>{
-        const shapes=rings.map(ring=>clipRingToLeaf(ring,index)).filter(ring=>ring.length>=3).map(leafShape);
+        const shapes=rings.map(ring=>clipPanelRing(ring,index)).filter(ring=>ring.length>=3).map(leafShape);
         if(shapes.length) {
           const geometry=keep(new THREE.ShapeGeometry(shapes));
           const mesh=new THREE.Mesh(geometry,land);mesh.position.z=.8;mesh.userData.territory=t.id;half.add(mesh);meshes.push(mesh);clippedCountryParts++;
           printedLand[index].push(mapUV(new THREE.ShapeGeometry(shapes)));
         }
-        const counter=clipRingToLeaf([{x:t.x-34,y:t.y-11},{x:t.x+34,y:t.y-11},{x:t.x+34,y:t.y+31},{x:t.x-34,y:t.y+31}],index);
+        const counter=clipPanelRing([{x:t.x-34,y:t.y-11},{x:t.x+34,y:t.y-11},{x:t.x+34,y:t.y+31},{x:t.x-34,y:t.y+31}],index);
         if(counter.length>=3)counterSurfaces[index].push(mapUV(new THREE.ShapeGeometry(leafShape(counter))));
         const lines:number[]=[];
         rings.forEach(ring=>ring.forEach((a,i)=>{
-          let b=ring[(i+1)%ring.length],from=a,to=b;
-          const aInside=index===0?a.x<=550:a.x>=550,bInside=index===0?b.x<=550:b.x>=550;
-          if(!aInside&&!bInside)return;
-          if(aInside!==bInside){const fraction=(550-a.x)/(b.x-a.x),cross={x:550,y:a.y+(b.y-a.y)*fraction};if(aInside)to=cross;else from=cross;}
-          const start=point(from.x,from.y,1.08),end=point(to.x,to.y,1.08);lines.push(start.x,start.y,start.z,end.x,end.y,end.z);
+          const clipped=clipPanelSegment(a,ring[(i+1)%ring.length],index);if(!clipped)return;
+          const start=point(clipped[0].x,clipped[0].y,1.08),end=point(clipped[1].x,clipped[1].y,1.08);lines.push(start.x,start.y,start.z,end.x,end.y,end.z);
         }));
         if(lines.length)half.add(new THREE.LineSegments(keep(new THREE.BufferGeometry().setAttribute('position',new THREE.Float32BufferAttribute(lines,3))),lineMaterial));
       });
@@ -189,7 +179,7 @@ export default function Board3D(props: Props) {
     const countMaterial=keep(new THREE.MeshStandardMaterial({map:counters.texture,transparent:true,depthWrite:false,roughness:.9,metalness:0,polygonOffset:true,polygonOffsetFactor:-2}));
     halves.forEach((half,index)=>{
       const landInk=new THREE.Mesh(merge(printedLand[index]),inkMaterial);landInk.position.z=1.1;half.add(landInk);
-      const oceanInk=new THREE.Mesh(keep(mapUV(new THREE.PlaneGeometry(550,640).translate(index===0?-275:275,0,0))),inkMaterial);oceanInk.position.z=.46;half.add(oceanInk);
+      const oceanInk=new THREE.Mesh(keep(mapUV(new THREE.PlaneGeometry(550,320).translate(index%2===0?-275:275,index<2?160:-160,0))),inkMaterial);oceanInk.position.z=.46;half.add(oceanInk);
       const countInk=new THREE.Mesh(merge(counterSurfaces[index]),countMaterial);countInk.position.z=1.35;half.add(countInk);
     });
     let counterSignature='';
@@ -207,50 +197,43 @@ export default function Board3D(props: Props) {
     const cannonWheelGeo=merge([-6,6].map(x => new THREE.CylinderGeometry(5,5,2,10).rotateZ(Math.PI/2).translate(x,-3,5)));
     const cannonGeometries=[cannonBarrelGeo,cannonCarriageGeo,cannonWheelGeo];
     const cannonMaterials=[material('#d1b175',.85,.25),material('#ffffff',.35,.4),material('#282724',.15,.72)];
-    const reserveUnits=[{x:-615,y:49},{x:-602,y:20},{x:-617,y:-10},{x:-603,y:-39},{x:602,y:49},{x:615,y:20},{x:601,y:-10},{x:615,y:-39}];
-    const reserveCannons=[{x:-610,y:-81},{x:-610,y:-115},{x:610,y:-81},{x:610,y:-115}];
     const instances = (geometries: THREE.BufferGeometry[], materials: THREE.Material[], count: number, parent: THREE.Group) => geometries.map((geometry,i) => { const instance=new THREE.InstancedMesh(geometry,materials[i],count); instance.frustumCulled=false; parent.add(instance); return instance; });
-    const unitSets=halves.map(half => instances(unitGeometries,unitMaterials,TERRITORIES.length+reserveUnits.length,half));
-    const cannonSets=halves.map(half => instances(cannonGeometries,cannonMaterials,TERRITORIES.length+reserveCannons.length,half));
-    const moving=new THREE.Group(); scene.add(moving);
-    const movingMaterials=unitMaterials.map(mat => keep(mat.clone()));
-    const movingPieces=instances(unitGeometries,movingMaterials,3,moving); moving.visible=false;
+    const unitSets=halves.map(half => instances(unitGeometries,unitMaterials,TERRITORIES.length,half));
+    const cannonSets=halves.map(half => instances(cannonGeometries,cannonMaterials,TERRITORIES.length,half));
+    const reserveUnitSet=instances(unitGeometries,unitMaterials,54,equipment),reserveCannonSet=instances(cannonGeometries,cannonMaterials,120,equipment);
+    const moving=new THREE.Group(),defending=new THREE.Group();scene.add(moving,defending);
+    const movingMaterials=unitMaterials.map(mat => keep(mat.clone())),defendingMaterials=unitMaterials.map(mat=>keep(mat.clone()));
+    const movingPieces=instances(unitGeometries,movingMaterials,42,moving),defendingPieces=instances(unitGeometries,defendingMaterials,2,defending);moving.visible=false;defending.visible=false;
+    const reserveCanvas=document.createElement('canvas');reserveCanvas.width=1024;reserveCanvas.height=512;const reserveContext=reserveCanvas.getContext('2d')!,reserveTexture=keep(new THREE.CanvasTexture(reserveCanvas));reserveTexture.colorSpace=THREE.SRGBColorSpace;
+    const reserveMaterial=keep(new THREE.MeshStandardMaterial({map:reserveTexture,transparent:true,depthWrite:false,roughness:1}));
+    trays.forEach((tray,i)=>{const geometry=keep(new THREE.PlaneGeometry(76,25));const uv=geometry.getAttribute('uv');for(let j=0;j<uv.count;j++)uv.setXY(j,(uv.getX(j)+i%3)/3,(uv.getY(j)+Math.floor(i/3))/2);const label=new THREE.Mesh(geometry,reserveMaterial);label.position.set(0,-73,-.5);tray.add(label);});
     const matrix=new THREE.Matrix4(), color=new THREE.Color();
-    interface Figure { x:number; y:number; z:number; color:THREE.Color }
+    interface Figure { x:number; y:number; z:number; color:THREE.Color; territory?:string }
     const unitFigures:Figure[]=[],cannonFigures:Figure[]=[];
-    const place=(figures:Figure[],x:number,y:number,z:number,ownerColor:THREE.Color)=>figures.push({x,y,z,color:ownerColor.clone()});
-    const figureVisible=(figure:Figure,height:number)=>{
-      const progress=foldProgress.current;
-      if(progress<.5)return true;
-      if(progress>.995)return false;
-      if(Math.abs(figure.x)>580)return progress<.65;
-      const phi=Math.PI*progress;
-      if(figure.x<0) {
-        if(figure.x<Math.cos(phi)*568-10)return true;
-        const coverHeight=hingeHeight+Math.tan(phi)*figure.x+(1.1-hingeHeight)/Math.cos(phi);
-        return coverHeight>figure.z+height+2;
-      }
-      const tip=new THREE.Vector3(figure.x,figure.y,figure.z+height).applyMatrix4(halves[1].matrixWorld);
-      return tip.z>3.3;
-    };
+    const place=(figures:Figure[],x:number,y:number,z:number,ownerColor:THREE.Color,territory?:string)=>figures.push({x,y,z,color:ownerColor.clone(),territory});
+    let setupArrivals=new Set<string>();
     const showFigures=()=>{
       table.updateMatrixWorld(true);
-      const fill=(figures:Figure[],sets:THREE.InstancedMesh[][],height:number,skin=false)=>{
-        const counts=[0,0];
+      const fill=(figures:Figure[],sets:THREE.InstancedMesh[][],skin=false)=>{
+        const counts=[0,0,0,0];
         figures.forEach(figure=>{
-          if(!figureVisible(figure,height))return;
-          const half=figure.x<0?0:1,index=counts[half]++;matrix.makeTranslation(figure.x,figure.y,figure.z);
-          sets[half].forEach((piece,part)=>{piece.setMatrixAt(index,matrix);piece.setColorAt(index,skin && (part===2 || part===4)?new THREE.Color('#ffffff'):part===0?figure.color.clone().multiplyScalar(.75):figure.color);});
+          // Once the cardboard closes over its figures, stow their visual
+          // representatives. The logical armies stay in the campaign.
+          if(foldProgress.current>.17)return;
+          if(animation?.motion.type==='setup' && figure.territory && !setupArrivals.has(figure.territory))return;
+          if(animation?.motion.type==='attack' && (figure.territory===animation.motion.from || figure.territory===animation.motion.to))return;
+          const panel=boardPanel(figure.x+550,320-figure.y),index=counts[panel]++;matrix.makeTranslation(figure.x,figure.y,figure.z);
+          sets[panel].forEach((piece,part)=>{piece.setMatrixAt(index,matrix);piece.setColorAt(index,skin&&(part===2||part===4)?new THREE.Color('#ffffff'):part===0?figure.color.clone().multiplyScalar(.75):figure.color);});
         });
-        sets.forEach((set,half)=>set.forEach(piece=>{piece.count=counts[half];piece.instanceMatrix.needsUpdate=true;if(piece.instanceColor)piece.instanceColor.needsUpdate=true;}));
-        return counts[0]+counts[1];
+        sets.forEach((set,panel)=>set.forEach(piece=>{piece.count=counts[panel];piece.instanceMatrix.needsUpdate=true;if(piece.instanceColor)piece.instanceColor.needsUpdate=true;}));
+        return counts.reduce((sum,n)=>sum+n,0);
       };
-      return fill(unitFigures,unitSets,35,true)+fill(cannonFigures,cannonSets,25);
+      return fill(unitFigures,unitSets,true)+fill(cannonFigures,cannonSets);
     };
-    let frame=0, disposed=false, hover: string|null=null, animation: {motion:BoardMotion;start:number}|null=null;
+    let frame=0, disposed=false, hover: string|null=null, animation: {motion:BoardMotion;start:number;placements:ReturnType<typeof setupPlacements>}|null=null;
     let foldAnimation:{from:number;to:number;start:number;duration:number}|null=null;
     let width=1100,height=640,fitDistance=1400,lastFit='',frames=0;
-    const stats={frames:0,drawCalls:0,triangles:0,renderer:'three-webgl',quality:props.quality,zoom:viewRef.current.zoom,rotation:0,tilt:50,fitDistance:0,opening:false,territoryUnits:0,reserveUnits:0,countTokens:0,printedNameCount:TERRITORIES.length,labelPresentation:'board-surface',surfaceLabelSamples:[] as {id:string;corners:{x:number;y:number}[]}[],foldProgress:foldProgress.current,leafAngles:[0,0],foldTarget:props.folded,foldTransitioning:false,clippedCountryParts,visibleFigures:0,pieceWorldSamples:[] as {half:number;x:number;y:number;z:number}[]};
+    const stats={frames:0,drawCalls:0,triangles:0,renderer:'three-webgl',quality:props.quality,zoom:viewRef.current.zoom,rotation:0,tilt:50,fitDistance:0,opening:false,territoryUnits:0,reserveUnits:0,countTokens:0,printedNameCount:TERRITORIES.length,labelPresentation:'board-surface',surfaceLabelSamples:[] as {id:string;corners:{x:number;y:number}[]}[],foldProgress:foldProgress.current,leafAngles:[0,0],foldTarget:props.folded,foldTransitioning:false,clippedCountryParts,visibleFigures:0,pieceWorldSamples:[] as {half:number;x:number;y:number;z:number}[],panelAngles:[] as {x:number;y:number}[],panelWorldSamples:[] as {panel:number;corners:{x:number;y:number;z:number}[]}[],settleHeight:0,reserveArmies:0,reserveSamples:[] as {playerId:string;armies:number;infantry:number;artillery:number;overflow:number}[],motionType:null as BoardMotion['type']|null,motionProgress:0,setupPlaced:0,setupTotal:0,defendingFigures:0,defenseVisible:false,attackerLoss:0,defenderLoss:0};
     const publishFold=(transitioning:boolean,force=false)=>{
       const target=current.current.folded;
       const phase=transitioning?(target?'folding':'opening'):(target?'folded':'open');
@@ -258,10 +241,40 @@ export default function Board3D(props: Props) {
       stats.foldTarget=target;stats.foldTransitioning=transitioning;stats.opening=transitioning&&!target;
       if(force || !foldSignal.current || foldSignal.current.folded!==target || foldSignal.current.transitioning!==transitioning){foldSignal.current={folded:target,transitioning};current.current.onFoldStateChange?.(foldSignal.current);}
     };
+    let reserveSignature='';
+    const updateReserves=()=>{
+      const game=current.current.game;let infantryIndex=0,artilleryIndex=0;
+      const samples:typeof stats.reserveSamples=[];
+      const setup=animation?.motion.type==='setup'?animation:null;
+      const elapsed=setup?performance.now()-setup.start:0;
+      trays.forEach((tray,index)=>{
+        const player=game?.players[index];tray.visible=Boolean(player);if(!game || !player)return;
+        const anchor=reserveAnchor(index,game.players.length);tray.position.set(anchor.x,anchor.y,0);
+        const departed=setup?setup.placements.filter((placement,i)=>placement.owner===player.id && elapsed>=i*45).reduce((sum,p)=>sum+p.count,0):0;
+        const armies=setup?Math.max(0,initialArmyAllowance(game.players.length)-departed):index===game.currentPlayer?reserveArmyCount(game):0;
+        const counts=reservePieces(armies);samples.push({playerId:player.id,armies,infantry:counts.infantry,artillery:counts.artillery,overflow:counts.overflow});
+        const ownerColor=new THREE.Color(player.color);
+        for(let slot=0;slot<counts.infantry+counts.artillery;slot++){
+          const isCannon=slot>=counts.infantry,sets=isCannon?reserveCannonSet:reserveUnitSet,instance=isCannon?artilleryIndex++:infantryIndex++;
+          matrix.compose(new THREE.Vector3(anchor.x+(slot%5-2)*13,anchor.y+Math.floor(slot/5)*17-42,anchor.z),new THREE.Quaternion(),new THREE.Vector3(.65,.65,.65));
+          sets.forEach((piece,part)=>{piece.setMatrixAt(instance,matrix);piece.setColorAt(instance,!isCannon&&(part===2||part===4)?new THREE.Color('#ffffff'):ownerColor);});
+        }
+      });
+      [reserveUnitSet,reserveCannonSet].forEach((set,i)=>set.forEach(piece=>{piece.count=i===0?infantryIndex:artilleryIndex;piece.instanceMatrix.needsUpdate=true;if(piece.instanceColor)piece.instanceColor.needsUpdate=true;}));
+      stats.reserveSamples=samples;stats.reserveArmies=samples.reduce((sum,p)=>sum+p.armies,0);stats.reserveUnits=infantryIndex+artilleryIndex;
+      const signature=JSON.stringify([samples,game?.players.map(p=>[p.name,p.color]),Boolean(setup)]);
+      if(signature!==reserveSignature){
+        reserveSignature=signature;reserveContext.clearRect(0,0,1024,512);
+        samples.forEach((sample,i)=>{const player=game!.players[i],x=i%3*1024/3+1024/6,y=(1-Math.floor(i/3))*256;reserveContext.textAlign='center';reserveContext.fillStyle=player.color;reserveContext.font='bold 34px sans-serif';reserveContext.fillText(player.name.slice(0,18),x,y+85,310);reserveContext.fillStyle='#e5d9bd';reserveContext.font='bold 44px sans-serif';reserveContext.fillText(`${setup?'SETUP':'READY'} ${sample.armies}`,x,y+153,310);if(sample.overflow){reserveContext.font='20px sans-serif';reserveContext.fillText('exact total · condensed pieces',x,y+200,310);}});
+        reserveTexture.needsUpdate=true;
+      }
+    };
     const applyFoldPose=(progress:number)=>{
-      foldProgress.current=clamp(progress,0,1);rightHinge.rotation.y=-Math.PI*foldProgress.current;table.position.x=284*foldProgress.current;
-      table.updateMatrixWorld(true);stats.foldProgress=foldProgress.current;stats.leafAngles=[0,rightHinge.rotation.y];stats.visibleFigures=showFigures();
-      stats.pieceWorldSamples=[0,1].flatMap(half=>{const onHalf=(figure:Figure)=>(figure.x<0?0:1)===half,figure=unitFigures.find(onHalf)||cannonFigures.find(onHalf);if(!figure)return [];const p=new THREE.Vector3(figure.x,figure.y,figure.z).applyMatrix4(halves[half].matrixWorld);return [{half,x:p.x,y:p.y,z:p.z}];});
+      foldProgress.current=clamp(progress,0,1);const pose=boardFoldPose(foldProgress.current);
+      rightHinge.rotation.y=pose.vertical;lowerHinge.rotation.x=pose.horizontal;upperHinge.rotation.x=pose.upper;table.position.x=pose.x;table.position.y=pose.y;table.position.z=foldProgress.current<.2?Math.sin(foldProgress.current/.2*Math.PI)*6:0;stats.settleHeight=table.position.z;
+      table.updateMatrixWorld(true);stats.foldProgress=foldProgress.current;stats.leafAngles=[0,rightHinge.rotation.y];stats.panelAngles=[{x:0,y:0},{x:pose.upper,y:pose.vertical},{x:pose.horizontal,y:0},{x:pose.horizontal,y:pose.vertical}];stats.visibleFigures=showFigures();
+      stats.panelWorldSamples=halves.map((half,panel)=>({panel,corners:[[-1,-1],[-1,1],[1,1],[1,-1]].map(([x,y])=>{const p=new THREE.Vector3((panel%2===0?-284:284)+x*278,(panel<2?165:-165)+y*159,0).applyMatrix4(half.matrixWorld);return {x:p.x,y:p.y,z:p.z};})}));
+      stats.pieceWorldSamples=[0,1].flatMap(half=>{const onHalf=(figure:Figure)=>(figure.x<0?0:1)===half,figure=unitFigures.find(onHalf)||cannonFigures.find(onHalf);if(!figure)return [];const p=new THREE.Vector3(figure.x,figure.y,figure.z).applyMatrix4(halfFor(figure.x,figure.y).matrixWorld);return [{half,x:p.x,y:p.y,z:p.z}];});
       if(stage.current)stage.current.dataset.foldProgress=String(foldProgress.current);
     };
     const statsGetter=() => Object.freeze({...stats});
@@ -270,18 +283,18 @@ export default function Board3D(props: Props) {
       scene.updateMatrixWorld(); camera.updateMatrixWorld();
       const labelScale=clamp(width/1100,.84,1.2)*Math.pow(viewRef.current.zoom,.3);
       TERRITORIES.forEach(t => {
-        const position=point(t.x,t.y,1.5).applyMatrix4(halfFor(t.x-550).matrixWorld).project(camera), element=labelElements.current.get(t.id);
+        const position=point(t.x,t.y,1.5).applyMatrix4(halfFor(t.x-550,320-t.y).matrixWorld).project(camera), element=labelElements.current.get(t.id);
         if(element) { element.setAttribute('transform',`translate(${(position.x+1)*width/2} ${(1-position.y)*height/2}) scale(${labelScale})`); element.setAttribute('visibility',current.current.folded || foldAnimation!==null || foldProgress.current>1e-6 || Math.abs(position.x)>1.15 || Math.abs(position.y)>1.15 || position.z>1 ? 'hidden':'visible'); }
       });
-      stats.surfaceLabelSamples=['north-africa','china','ukraine'].map(id=>{const territory=TERRITORIES.find(t=>t.id===id)!;return {id,corners:labelCorners(territory).map(corner=>{const p=point(corner.x,corner.y,1.1).applyMatrix4(halfFor(corner.x-550).matrixWorld).project(camera);return {x:(p.x+1)*width/2,y:(1-p.y)*height/2};})};});
+      stats.surfaceLabelSamples=['north-africa','china','ukraine'].map(id=>{const territory=TERRITORIES.find(t=>t.id===id)!;return {id,corners:labelCorners(territory).map(corner=>{const p=point(corner.x,corner.y,1.1).applyMatrix4(halfFor(corner.x-550,320-corner.y).matrixWorld).project(camera);return {x:(p.x+1)*width/2,y:(1-p.y)*height/2};})};});
       const p = current.current;
       const origin = TERRITORIES.find(t => t.id === p.selected), destination = TERRITORIES.find(t => t.id === p.target);
       const legal = !p.folded && foldAnimation===null && foldProgress.current<1e-6 && origin && destination && (p.validTargets.includes(destination.id) || (p.game?.phase === 'occupy' && p.game.occupation?.from === origin.id && p.game.occupation.to === destination.id));
       // The Pacific seam is a wrapped sea route. A straight arrow through the whole world would be misleading.
       if (!legal || Math.abs(origin.x - destination.x) > 550) routeElement.current?.setAttribute('visibility','hidden');
       else {
-        const from = point(origin.x,origin.y,1.5).applyMatrix4(halfFor(origin.x-550).matrixWorld).project(camera);
-        const to = point(destination.x,destination.y,1.5).applyMatrix4(halfFor(destination.x-550).matrixWorld).project(camera);
+        const from = point(origin.x,origin.y,1.5).applyMatrix4(halfFor(origin.x-550,320-origin.y).matrixWorld).project(camera);
+        const to = point(destination.x,destination.y,1.5).applyMatrix4(halfFor(destination.x-550,320-destination.y).matrixWorld).project(camera);
         const ax=(from.x+1)*width/2, ay=(1-from.y)*height/2, bx=(to.x+1)*width/2, by=(1-to.y)*height/2;
         const distance=Math.hypot(bx-ax,by-ay), ux=(bx-ax)/Math.max(1,distance), uy=(by-ay)/Math.max(1,distance);
         const inset=Math.min(24,distance*.24), endX=bx-ux*inset, endY=by-uy*inset;
@@ -299,19 +312,55 @@ export default function Board3D(props: Props) {
         if(progress>=1) {const endpoint=foldAnimation.to;applyFoldPose(endpoint);foldAnimation=null;publishFold(Math.abs(endpoint-(current.current.folded?1:0))>1e-6);}
       }
       if(animation) {
-        const progress=Math.min(1,(now-animation.start)/380), to=TERRITORIES.find(t=>t.id===animation!.motion.to)!, from=TERRITORIES.find(t=>t.id===animation!.motion.from)||to;
-        const destination=point(to.x-13,to.y+4,1.3);
-        const origin=animation.motion.type==='deploy' ? new THREE.Vector3(to.x<550?-610:610,20,-.5) : point(from.x-13,from.y+4,1.3);
-        moving.position.lerpVectors(origin,destination,progress);
-        moving.position.z+=Math.sin(progress*Math.PI)*24+Math.abs(Math.sin(progress*Math.PI*8))*2;
-        moving.scale.setScalar(animation.motion.type==='deploy'?.65+progress*.35:1);
-        if(progress>=1) { animation=null; moving.visible=false; current.current.onMotionEnd?.(); }
+        const active=animation,motion=active.motion,elapsed=now-active.start,duration=motion.type==='setup'?Math.max(1,active.placements.length-1)*45+520:motion.type==='attack'?920:640;
+        const progress=Math.min(1,elapsed/duration);stats.motionType=motion.type;stats.motionProgress=progress;
+        if(motion.type==='setup') {
+          moving.position.set(0,0,0);moving.scale.setScalar(1);setupArrivals=new Set<string>();
+          active.placements.forEach((placement,index)=>{
+            const t=TERRITORIES.find(t=>t.id===placement.territory)!,u=clamp((elapsed-index*45)/520,0,1),started=elapsed>=index*45;
+            if(u>=1)setupArrivals.add(placement.territory);
+            const smooth=u*u*(3-2*u),position=new THREE.Vector3().lerpVectors(new THREE.Vector3(placement.from.x,placement.from.y,placement.from.z),point(t.x-13,t.y+4,1.3),smooth);
+            position.z+=Math.sin(Math.PI*u)*42;
+            matrix.compose(position,new THREE.Quaternion(),new THREE.Vector3().setScalar(started&&u<1?1:0));
+            movingPieces.forEach((piece,part)=>{piece.setMatrixAt(index,matrix);piece.setColorAt(index,part===2||part===4?new THREE.Color('#ffffff'):new THREE.Color(placement.color));});
+          });
+          movingPieces.forEach(piece=>{piece.count=active.placements.length;piece.instanceMatrix.needsUpdate=true;if(piece.instanceColor)piece.instanceColor.needsUpdate=true;});
+          stats.setupPlaced=setupArrivals.size;stats.setupTotal=active.placements.length;
+          update(false);
+        } else {
+          const to=TERRITORIES.find(t=>t.id===motion.to)!,from=TERRITORIES.find(t=>t.id===motion.from)||to;
+          const destination=point(to.x-13,to.y+4,1.3),playerIndex=Math.max(0,current.current.game?.players.findIndex(player=>player.id===motion.playerId)??0),anchor=reserveAnchor(playerIndex,current.current.game?.players.length||3);
+          const origin=motion.type==='deploy'?new THREE.Vector3(anchor.x,anchor.y,anchor.z):point(from.x-13,from.y+4,1.3);
+          const smooth=progress*progress*(3-2*progress);
+          // Combat is a lunge and response. Occupation is a separate confirmed
+          // movement, so an attack animation never awards a territory itself.
+          const travel=motion.type==='attack'?Math.sin(Math.PI*progress)*.78:smooth;
+          moving.position.lerpVectors(origin,destination,travel);moving.position.z+=Math.sin(progress*Math.PI)*(motion.type==='deploy'?42:12);
+          moving.scale.setScalar(1);
+          const shown=Math.min(3,Math.max(1,motion.count));
+          for(let i=0;i<3;i++){
+            const casualty=motion.type==='attack' && i<(motion.attackerLoss||0) && progress>.5,fall=casualty?clamp((progress-.5)/.2,0,1):0;
+            matrix.compose(new THREE.Vector3(i*15-15,(i%2)*8,casualty?Math.sin(fall*Math.PI)*7:Math.abs(Math.sin(progress*Math.PI*8))*1.2),new THREE.Quaternion().setFromEuler(new THREE.Euler(fall*Math.PI/2,0,0)),new THREE.Vector3().setScalar(i<shown && fall<1?1:0));
+            movingPieces.forEach(piece=>piece.setMatrixAt(i,matrix));
+          }
+          movingPieces.forEach(piece=>{piece.count=3;piece.instanceMatrix.needsUpdate=true;});
+          if(motion.type==='attack') {
+            defending.position.copy(destination);const defenders=Math.min(2,motion.defenseDice?.length||0);stats.defendingFigures=defenders;stats.defenseVisible=defenders>0;defending.visible=defenders>0;
+            for(let i=0;i<2;i++){
+              const casualty=i<(motion.defenderLoss||0) && progress>.5,fall=casualty?clamp((progress-.5)/.25,0,1):0;
+              matrix.compose(new THREE.Vector3(i*17-8,Math.sin(progress*Math.PI)*-5,casualty?Math.sin(fall*Math.PI)*5:0),new THREE.Quaternion().setFromEuler(new THREE.Euler(fall*Math.PI/2,0,Math.sin(progress*Math.PI)*.12)),new THREE.Vector3().setScalar(i<defenders && fall<1?1:0));
+              defendingPieces.forEach(piece=>piece.setMatrixAt(i,matrix));
+            }
+            defendingPieces.forEach(piece=>{piece.count=2;piece.instanceMatrix.needsUpdate=true;});
+          }
+        }
+        if(progress>=1) { animation=null;moving.visible=false;defending.visible=false;stats.motionType=null;stats.motionProgress=1;stats.defenseVisible=false;stats.defendingFigures=0;update(false);current.current.onMotionEnd?.(); }
       }
       projectLabels(); renderer.render(scene,camera); stats.frames=++frames;stats.drawCalls=renderer.info.render.calls;stats.triangles=renderer.info.render.triangles;stats.opening=foldAnimation!==null&&!current.current.folded;
       if(animation || foldAnimation!==null) frame=requestAnimationFrame(render);
     };
     const invalidate=() => {if(!frame && !disposed) frame=requestAnimationFrame(render);};
-    const update=() => {
+    const update=(shouldInvalidate=true) => {
       const p=current.current;unitFigures.length=0;cannonFigures.length=0;
       TERRITORIES.forEach((t,i) => {
         const state=p.game?.territories[t.id],player=p.game?.players.find(player=>player.id===state?.owner);
@@ -321,25 +370,25 @@ export default function Board3D(props: Props) {
         landMaterials[i].emissive.copy(color);landMaterials[i].emissiveIntensity=active?.1:t.id===hover?.06:p.validTargets.includes(t.id)?.025:0;
         outlineMaterials[i].color.set(active?'#251e13':p.validTargets.includes(t.id)?'#614421':'#54482e');outlineMaterials[i].opacity=active || p.validTargets.includes(t.id)?1:.88;
         if(state && state.armies>0) {const isCannon=state.armies>=10;
-        if(isCannon)place(cannonFigures,t.x-550-13,320-t.y-4,1.3,color);
-        else place(unitFigures,t.x-550-13,320-t.y-4,1.3,color);}
+        if(isCannon)place(cannonFigures,t.x-550-13,320-t.y-4,1.3,color,t.id);
+        else place(unitFigures,t.x-550-13,320-t.y-4,1.3,color,t.id);}
       });
-      const reserveColor=p.game?.players[p.game.currentPlayer]?.color || '#c7a258';color.set(reserveColor);
-      if(p.game) {reserveUnits.forEach(p=>place(unitFigures,p.x,p.y,-.5,color));
-      reserveCannons.forEach(p=>place(cannonFigures,p.x,p.y,-.5,color));}
-      stats.territoryUnits=p.game?Object.values(p.game.territories).filter(state=>state.armies>0).length:0;stats.reserveUnits=p.game?reserveUnits.length+reserveCannons.length:0;stats.countTokens=p.game?Object.keys(p.game.territories).length:0;
+      updateReserves();
+      stats.territoryUnits=p.game?Object.values(p.game.territories).filter(state=>state.armies>0).length:0;stats.countTokens=p.game?Object.keys(p.game.territories).length:0;
       const signature=JSON.stringify([p.game?.territories,p.game?.players.map(player=>[player.id,player.color]),p.selected,p.target,p.eligibleSources,p.validTargets]);
       if(signature!==counterSignature){counterSignature=signature;paintCounters(counters.context,printScale,p.game,p.selected,p.target,p.eligibleSources||[],p.validTargets);counters.texture.needsUpdate=true;}
       applyFoldPose(foldProgress.current);
-      invalidate();
+      if(shouldInvalidate)invalidate();
     };
     const animate=() => {
-      const p=current.current; animation=null; moving.visible=false;
+      const p=current.current;animation=null;moving.visible=false;defending.visible=false;stats.motionType=null;stats.defenseVisible=false;stats.defendingFigures=0;
       if(p.game && p.motion && !p.reducedMotion && !p.folded && foldProgress.current<1e-6 && foldAnimation===null && TERRITORIES.some(t=>t.id===p.motion!.to)) {
-        animation={motion:p.motion,start:performance.now()};
-        [0,1,3].forEach(i=>movingMaterials[i].color.set(p.motion!.color));
-        movingPieces.forEach(piece=>{for(let i=0;i<3;i++){matrix.compose(new THREE.Vector3(i*15-15,(i%2)*8,0),new THREE.Quaternion(),new THREE.Vector3().setScalar(i<Math.min(3,Math.max(1,p.motion!.count))?1:0));piece.setMatrixAt(i,matrix);}piece.instanceMatrix.needsUpdate=true;});moving.visible=true;
-      } else if(p.motion) p.onMotionEnd?.(); invalidate();
+        animation={motion:p.motion,start:performance.now(),placements:p.motion.type==='setup'?setupPlacements(p.game,p.motion.placements):[]};
+        setupArrivals.clear();stats.setupPlaced=0;stats.setupTotal=animation.placements.length;stats.motionType=p.motion.type;stats.motionProgress=0;stats.attackerLoss=p.motion.attackerLoss||0;stats.defenderLoss=p.motion.defenderLoss||0;
+        [0,1,3].forEach(i=>{movingMaterials[i].color.set(p.motion!.type==='setup'?'#ffffff':p.motion!.color);defendingMaterials[i].color.set(p.motion!.defenderColor||'#ffffff');});
+        movingPieces.forEach(piece=>{for(let i=0;i<42;i++)piece.setColorAt(i,new THREE.Color('#ffffff'));if(piece.instanceColor)piece.instanceColor.needsUpdate=true;});moving.visible=true;
+      } else if(p.motion) p.onMotionEnd?.();
+      update();
     };
     const fold=() => {
       const now=performance.now(),target=current.current.folded?1:0;
@@ -347,10 +396,10 @@ export default function Board3D(props: Props) {
         const progress=clamp((now-foldAnimation.start)/foldAnimation.duration,0,1),smooth=progress*progress*(3-2*progress);
         applyFoldPose(foldAnimation.from+(foldAnimation.to-foldAnimation.from)*smooth);
       }
-      animation=null;moving.visible=false;hover=null;cancelGesture();
+      animation=null;moving.visible=false;defending.visible=false;stats.motionType=null;stats.defenseVisible=false;stats.defendingFigures=0;hover=null;cancelGesture();updateReserves();
       if(current.current.motion)current.current.onMotionEnd?.();
       if(current.current.reducedMotion || Math.abs(target-foldProgress.current)<1e-6) {foldAnimation=null;applyFoldPose(target);publishFold(false,true);}
-      else {foldAnimation={from:foldProgress.current,to:target,start:now,duration:Math.max(120,760*Math.abs(target-foldProgress.current))};publishFold(true,true);}
+      else {foldAnimation={from:foldProgress.current,to:target,start:now,duration:Math.max(120,1400*Math.abs(target-foldProgress.current))};publishFold(true,true);}
       invalidate();
     };
     const resize=() => {
@@ -397,7 +446,7 @@ export default function Board3D(props: Props) {
     return () => {
       disposed=true;api.current=null;cancelAnimationFrame(frame);observer.disconnect();root?.removeEventListener('wheel',wheel);
       renderer.domElement.removeEventListener('webglcontextlost',lost);renderer.domElement.removeEventListener('pointermove',pointerMove);renderer.domElement.removeEventListener('pointerleave',pointerLeave);
-      disposable.forEach(d=>d.dispose());[...unitSets.flat(),...cannonSets.flat(),...movingPieces].forEach(p=>p.dispose());renderer.dispose();renderer.domElement.remove();
+      disposable.forEach(d=>d.dispose());[...unitSets.flat(),...cannonSets.flat(),...reserveUnitSet,...reserveCannonSet,...movingPieces,...defendingPieces].forEach(p=>p.dispose());renderer.dispose();renderer.domElement.remove();
       const descriptor=Object.getOwnPropertyDescriptor(window,'__riskBoardStats');if(descriptor?.get===statsGetter)Reflect.deleteProperty(window,'__riskBoardStats');
     };
   },[props.quality,props.highContrast,failed]);

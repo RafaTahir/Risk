@@ -1,5 +1,5 @@
 import { CONTINENTS, TERRITORIES } from './world';
-import type { Card, CardSymbol, GameAction, GameLog, GameState, PlayerSpec } from './types';
+import type { BoardEvent, Card, CardSymbol, GameAction, GameLog, GameState, PlayerSpec } from './types';
 
 const definitions = new Map(TERRITORIES.map(t => [t.id, t]));
 const symbols: CardSymbol[] = ['infantry', 'cavalry', 'artillery'];
@@ -17,6 +17,10 @@ function shuffle<T>(items: T[], rng: () => number): T[] {
 function log(state: GameState, text: string, type: GameLog['type']) {
   state.log.push({ id: (state.log.at(-1)?.id ?? 0) + 1, text, type });
   if (state.log.length > 100) state.log.shift();
+}
+function boardEvent(state: GameState, outcome: Omit<BoardEvent, 'id'>) {
+  const events = state.presentationEvents ?? [];
+  state.presentationEvents = [...events.slice(-63), { ...outcome, id: (events.at(-1)?.id ?? 0) + 1 }];
 }
 const territoryName = (id: string) => definitions.get(id)?.name ?? id;
 function integer(value: number, minimum: number, maximum: number, label: string) {
@@ -95,6 +99,7 @@ export function createGame(specs: PlayerSpec[], rng: () => number = Math.random)
   }
   state.reinforcements = reinforcementCount(state, specs[0].id);
   log(state, `The world is divided. ${specs[0].name} takes command with ${state.reinforcements} reinforcements.`, 'turn');
+  boardEvent(state, { type: 'setup', playerId: specs[0].id, color: specs[0].color, count: initialArmies * specs.length, placements: TERRITORIES.map(t => ({ territory: t.id, owner: state.territories[t.id].owner, count: state.territories[t.id].armies })) });
   return state;
 }
 
@@ -131,6 +136,7 @@ export function applyAction(original: GameState, playerId: string, action: GameA
   assert(action && typeof action === 'object', 'Invalid command.');
   const state = structuredClone(original);
   const player = state.players[state.currentPlayer];
+  let outcome: Omit<BoardEvent, 'id'> | undefined;
   const owns = (id: string) => Boolean(definitions.has(id) && state.territories[id]?.owner === playerId);
   const phase = (expected: GameState['phase']) => assert(state.phase === expected, `This command is only available during ${expected}.`);
 
@@ -150,7 +156,10 @@ export function applyAction(original: GameState, playerId: string, action: GameA
       const eligible = selected.filter(card => card.territory && owns(card.territory));
       assert(action.bonusTerritory === undefined || eligible.some(card => card.territory === action.bonusTerritory), 'The bonus must go on an owned territory in this card set.');
       const ownedCard = action.bonusTerritory ? eligible.find(card => card.territory === action.bonusTerritory) : eligible[0];
-      if (ownedCard?.territory) state.territories[ownedCard.territory].armies += 2;
+      if (ownedCard?.territory) {
+        state.territories[ownedCard.territory].armies += 2;
+        outcome = { type: 'deploy', playerId, color: player.color, to: ownedCard.territory, count: 2 };
+      }
       log(state, `${player.name} traded a set for ${armies} armies${ownedCard?.territory ? ` and 2 on ${territoryName(ownedCard.territory)}` : ''}.`, 'card');
       break;
     }
@@ -161,6 +170,7 @@ export function applyAction(original: GameState, playerId: string, action: GameA
       integer(action.count, 1, state.reinforcements, 'Armies');
       state.territories[action.territory].armies += action.count;
       state.reinforcements -= action.count;
+      outcome = { type: 'deploy', playerId, color: player.color, to: action.territory, count: action.count };
       if (!state.reinforcements) {
         state.phase = 'attack';
         delete state.resumePhase;
@@ -174,6 +184,7 @@ export function applyAction(original: GameState, playerId: string, action: GameA
       assert(definitions.get(action.from)!.neighbors.includes(action.to), 'Attacks must follow a border or sea connection.');
       const from = state.territories[action.from];
       const to = state.territories[action.to];
+      const defenderColor = state.players.find(defender => defender.id === to.owner)?.color;
       integer(action.dice, 1, Math.min(3, from.armies - 1), 'Attacking dice');
       const roll = (count: number) => Array.from({ length: count }, () => 1 + Math.floor(rng() * 6)).sort((a, b) => b - a);
       const attackDice = roll(action.dice);
@@ -187,6 +198,7 @@ export function applyAction(original: GameState, playerId: string, action: GameA
       from.armies -= attackerLoss;
       to.armies -= defenderLoss;
       state.combat = { from: action.from, to: action.to, attackDice, defenseDice, attackerLoss, defenderLoss, conquered: to.armies === 0, at: Date.now() };
+      outcome = { type: 'attack', playerId, color: player.color, from: action.from, to: action.to, count: action.dice, defenderColor, attackerLoss, defenderLoss, attackDice: [...attackDice], defenseDice: [...defenseDice] };
       log(state, `${territoryName(action.from)} → ${territoryName(action.to)}: attacker lost ${attackerLoss}, defender lost ${defenderLoss}.`, 'attack');
       if (to.armies === 0) {
         const defeated = state.players.find(p => p.id === to.owner)!;
@@ -211,6 +223,7 @@ export function applyAction(original: GameState, playerId: string, action: GameA
       integer(action.count, occupation.minimum, occupation.maximum, 'Occupying armies');
       state.territories[occupation.from].armies -= action.count;
       state.territories[occupation.to].armies += action.count;
+      outcome = { type: 'conquest', playerId, color: player.color, from: occupation.from, to: occupation.to, count: action.count };
       state.occupation = null;
       state.phase = 'attack';
       if (TERRITORIES.every(t => owns(t.id))) {
@@ -237,6 +250,7 @@ export function applyAction(original: GameState, playerId: string, action: GameA
       integer(action.count, 1, state.territories[action.from].armies - 1, 'Moving armies');
       state.territories[action.from].armies -= action.count;
       state.territories[action.to].armies += action.count;
+      outcome = { type: 'move', playerId, color: player.color, from: action.from, to: action.to, count: action.count };
       log(state, `${player.name} moved ${action.count} armies from ${territoryName(action.from)} to ${territoryName(action.to)}.`, 'fortify');
       finishTurn(state, rng);
       break;
@@ -249,5 +263,6 @@ export function applyAction(original: GameState, playerId: string, action: GameA
       throw new Error('Unknown command.');
   }
   syncCards(state);
+  if (outcome) boardEvent(state, outcome);
   return state;
 }

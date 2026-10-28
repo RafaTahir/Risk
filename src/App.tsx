@@ -10,6 +10,7 @@ import { canTrade, nextTradeValue } from '../shared/game';
 import { CONTINENTS, TERRITORIES, TERRITORY_BY_ID } from '../shared/world';
 import type { Combat, Difficulty, GameAction, GameState } from '../shared/types';
 import { boardChoices } from './lib/tabletopGuidance';
+import { readBoardEvents, type PlaybackCursor } from './lib/presentationPlayback';
 const Board3D = lazy(() => import('./components/Board3D'));
 const phaseNames = { reinforce: 'Reinforce', attack: 'Attack', occupy: 'Advance', fortify: 'Fortify', gameover: 'Victory' };
 const difficultyCopy = { recruit: 'A forgiving opponent.', veteran: 'A calculated rival.', general: 'An ambitious strategist.' };
@@ -57,7 +58,11 @@ export default function App() {
   const [quality, setQuality] = useSetting('quality', 'high'); const [view, setView] = useSetting('table-view', '3d'); const [speed, setSpeed] = useSetting('motion', 'normal'); const [sound, setSound] = useSetting('sound', 'off');
   const [contrast, setContrast] = useSetting('contrast', 'standard');
   const [systemReduced, setSystemReduced] = useState(() => matchMedia('(prefers-reduced-motion: reduce)').matches); const reducedMotion = systemReduced || speed === 'instant';
-  const [motion, setMotion] = useState<BoardMotion | null>(null); const clearMotion = useCallback(() => setMotion(null), []);
+  const [motionQueue, setMotionQueue] = useState<BoardMotion[]>([]); const motion = motionQueue[0] ?? null;
+  const clearMotion = useCallback(() => setMotionQueue([]), []);
+  const finishMotion = useCallback(() => setMotionQueue(queue => queue.slice(1)), []);
+  const playbackCursor = useRef<PlaybackCursor | null>(null);
+  const setupRequested = useRef(false); const previousLobby = useRef<string | null>(null);
   useEffect(() => { clearMotion(); }, [game?.id, reducedMotion, view, folded, clearMotion]);
   const toggleBoard = useCallback(() => {
     const next = !foldTarget.current;
@@ -79,7 +84,26 @@ export default function App() {
   }, [sound]);
   useEffect(() => {
     const before = previous.current; previous.current = game;
-    if (!game || !before || game.id !== before.id) return;
+    const wasLobby = Boolean(room && previousLobby.current === room.code);
+    previousLobby.current = room?.status === 'lobby' ? room.code : null;
+    if (!game) { playbackCursor.current = null; return; }
+    const playback = readBoardEvents(playbackCursor.current, game, boardReady && !campaign.restoring && (wasLobby || setupRequested.current));
+    playbackCursor.current = playback.cursor; setupRequested.current = false;
+    if (game.presentationEvents) {
+      if (boardReady && !reducedMotion && view === '3d' && playback.events.length) {
+        const confirmed = playback.events.map(event => ({ ...event, id: `${game.id}:${event.id}`, to: event.to ?? TERRITORIES[0].id } as BoardMotion));
+        // Presentation is bounded and skippable; the current board always shows
+        // the latest authoritative state while recent confirmed moves replay.
+        setMotionQueue(queue => {
+          const combined = [...queue, ...confirmed];
+          return combined.length <= 16 ? combined : [combined[0], ...combined.slice(-15)];
+        });
+        playTone(confirmed.at(-1)!.type);
+      }
+      return;
+    }
+    // Older stored rooms acquire their journal on their next accepted action.
+    if (!before || game.id !== before.id) return;
     let next: BoardMotion | null = null;
     const changes = TERRITORIES.map(t => ({ id: t.id, delta: game.territories[t.id].armies - before.territories[t.id].armies })).filter(t => t.delta !== 0);
     const increased = changes.find(t => t.delta > 0); const decreased = changes.find(t => t.delta < 0);
@@ -88,7 +112,7 @@ export default function App() {
     else if (game.combat && (game.combat.at !== before.combat?.at || game.log.at(-1)?.id !== before.log.at(-1)?.id) && before.phase === 'attack') next = { id: `attack-${room?.revision}`, type: 'attack', from: game.combat.from, to: game.combat.to, count: game.combat.attackDice.length, color };
     else if (increased && decreased && before.phase === 'fortify') next = { id: `move-${room?.revision}`, type: 'move', from: decreased.id, to: increased.id, count: increased.delta, color };
     else if (increased && before.phase === 'reinforce') next = { id: `deploy-${room?.revision}`, type: 'deploy', to: increased.id, count: increased.delta, color };
-    if (next) { if (!reducedMotion && view === '3d' && boardReady) setMotion(next); playTone(next.type); }
+    if (next) { if (!reducedMotion && view === '3d' && boardReady) setMotionQueue(queue => [...queue, next!].slice(-16)); playTone(next.type); }
   }, [game, room?.revision, playTone, reducedMotion, view, boardReady]);
   useEffect(() => { setSelected(null); setTarget(null); setCardSelection([]); }, [game?.id, game?.currentPlayer, game?.turn]);
   useEffect(() => { setTarget(null); if (game?.phase === 'occupy') { setSelected(game.occupation!.from); setTarget(game.occupation!.to); } }, [game?.phase]);
@@ -105,11 +129,12 @@ export default function App() {
   const ownedBonus = selectedCards.filter(c => c.territory && game?.territories[c.territory].owner === me?.id);
   const selectedInfo = selected ? TERRITORY_BY_ID[selected] : null; const selectedOwner = selected && game ? game.players.find(p => p.id === game.territories[selected].owner) : null;
   const copyCode = async () => { try { await navigator.clipboard.writeText(room!.code); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { campaign.setError('Select and copy the room code to share it.'); } };
-  const boardProps = { game, selected, target, eligibleSources, validTargets, onSelect: selectTerritory, interactive: Boolean(game) && boardReady, folded, foldRevision, onFoldStateChange: reportFoldState, quality: quality === 'low' ? 'low' as const : 'high' as const, highContrast: contrast === 'strong', reducedMotion, motion, onMotionEnd: clearMotion };
+  const boardProps = { game, selected, target, eligibleSources, validTargets, onSelect: selectTerritory, interactive: Boolean(game) && boardReady, folded, foldRevision, onFoldStateChange: reportFoldState, quality: quality === 'low' ? 'low' as const : 'high' as const, highContrast: contrast === 'strong', reducedMotion, motion, onMotionEnd: finishMotion };
   const launchSolo = useCallback(async () => {
     if (room) return;
+    setupRequested.current = true;
     const result = await request('room:create', { name: name.trim() || 'Commander', bots, difficulty, mode: 'solo' });
-    if (result.ok) setDialog(null);
+    if (result.ok) setDialog(null); else setupRequested.current = false;
   }, [room, request, name, bots, difficulty]);
   useEffect(() => { if (game?.id) { setDialog(null); setMenuOpen(false); } }, [game?.id]);
   useEffect(() => { if (room && !game) { setDialog('players'); setMenuOpen(false); } }, [room?.code, Boolean(game)]);
@@ -137,7 +162,7 @@ export default function App() {
     return () => document.removeEventListener('keydown', cancel);
   }, [dialog, menuOpen, game?.phase, myTurn]);
   return <div className={`tabletop-app${contrast === 'strong' ? ' tactical-contrast' : ''}`}>
-    <main className={`table-stage ${game ? 'campaign' : room ? 'lobby' : 'home'}`} data-game-state={game ? 'playing' : room ? 'lobby' : 'pregame'} data-board-state={boardState} aria-label="Risk tabletop">
+    <main className={`table-stage ${game ? 'campaign' : room ? 'lobby' : 'home'}`} data-motion-event={motion?.id || ''} data-motion-type={motion?.type || ''} data-motion-queued={motionQueue.length} data-game-state={game ? 'playing' : room ? 'lobby' : 'pregame'} data-board-state={boardState} aria-label="Risk tabletop">
       <div className="table-canvas" data-testid="table-board">
         {view === '3d' ? <Suspense fallback={<WorldMap {...boardProps}/>}><Board3D {...boardProps}/></Suspense> : <WorldMap {...boardProps}/>}</div>
       <header className="table-hud">
