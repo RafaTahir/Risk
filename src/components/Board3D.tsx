@@ -8,6 +8,7 @@ import WorldMap from './WorldMap';
 import { PRINTED_COLORS, labelCorners, paintCounters, paintNames, paintOcean } from './boardSurface';
 import { createOrbitDrag, isTableDrag, orbitFromDrag, type TableOrbitDrag } from '../lib/tableInput';
 import { boardContour } from '../lib/boardContours';
+import compassRose from '../assets/compass-rose.json';
 import { boardFoldPose, boardPanel, clipPanelRing, clipPanelSegment, PANEL_BOUNDS } from '../lib/boardFold';
 import { reserveArmyCount, reserveAnchor, reservePieces, initialArmyAllowance, setupPlacements } from '../lib/armyPresentation';
 import './Board3D.css';
@@ -145,6 +146,13 @@ export default function Board3D(props: Props) {
     for(let i=0;i<48;i++){const a=i/48*Math.PI*2,b=(i+1)/48*Math.PI*2;compassSegments.push([compassX+Math.cos(a)*31,compassY+Math.sin(a)*31,compassX+Math.cos(b)*31,compassY+Math.sin(b)*31]);}
     for(let i=0;i<4;i++){const a=i*Math.PI/2,b=a+Math.PI/4,c=a-Math.PI/4;compassSegments.push([compassX+Math.cos(a)*39,compassY+Math.sin(a)*39,compassX+Math.cos(b)*8,compassY+Math.sin(b)*8],[compassX+Math.cos(a)*39,compassY+Math.sin(a)*39,compassX+Math.cos(c)*8,compassY+Math.sin(c)*8]);}
     addPrintedSegments(compassSegments,keep(new THREE.LineBasicMaterial({color:'#735c37',transparent:true,opacity:.7})));
+    // Original Blender-authored, flat ink geometry follows the same physical
+    // panel as the engraved compass; it never faces the camera as a billboard.
+    const roseGeometry=keep(new THREE.BufferGeometry());
+    roseGeometry.setAttribute('position',new THREE.Float32BufferAttribute(compassRose.positions,3));
+    roseGeometry.setIndex(compassRose.indices);
+    const roseMaterial=keep(new THREE.MeshBasicMaterial({color:'#735c37',transparent:true,opacity:.25,depthWrite:false,side:THREE.DoubleSide}));
+    const rose=new THREE.Mesh(roseGeometry,roseMaterial);rose.position.set(-440,-40,.452);halves[2].add(rose);
     const meshes: THREE.Mesh[] = [], landMaterials: THREE.MeshStandardMaterial[] = [], outlineMaterials: THREE.LineBasicMaterial[] = [];
     const printedLand: THREE.BufferGeometry[][] = [[],[],[],[]], counterSurfaces: THREE.BufferGeometry[][] = [[],[],[],[]];
     const mapUV = (geometry: THREE.BufferGeometry) => { const positions=geometry.getAttribute('position'),uv=new Float32Array(positions.count*2); for(let i=0;i<positions.count;i++){uv[i*2]=(positions.getX(i)+550)/1100;uv[i*2+1]=(positions.getY(i)+320)/640;} geometry.setAttribute('uv',new THREE.BufferAttribute(uv,2)); return geometry; };
