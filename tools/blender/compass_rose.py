@@ -14,3 +14,7 @@ obj=bpy.data.objects.new('Compass rose',mesh); bpy.context.collection.objects.li
 output=Path(__file__).resolve().parents[2]/'src/assets/compass-rose.json'
 output.write_text(json.dumps({'positions':[round(c,5) for v in mesh.vertices for c in v.co], 'indices':[i for face in mesh.polygons for i in face.vertices]},separators=(',',':'))+'\n')
 print('Created original compass mesh:', output, 'vertices:',len(mesh.vertices),'triangles:',len(mesh.polygons))
+
+source = Path(__file__).resolve().parent / 'source' / 'compass_rose.blend'
+source.parent.mkdir(parents=True, exist_ok=True)
+bpy.ops.wm.save_as_mainfile(filepath=str(source), compress=True)

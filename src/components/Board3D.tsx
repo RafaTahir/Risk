@@ -9,6 +9,7 @@ import { PRINTED_COLORS, labelCorners, paintCounters, paintNames, paintOcean } f
 import { createOrbitDrag, isTableDrag, orbitFromDrag, type TableOrbitDrag } from '../lib/tableInput';
 import { boardContour } from '../lib/boardContours';
 import compassRose from '../assets/compass-rose.json';
+import cannonBarrel from '../assets/cannon-barrel.json';
 import { boardFoldPose, boardPanel, clipPanelRing, clipPanelSegment, PANEL_BOUNDS } from '../lib/boardFold';
 import { reserveArmyCount, reserveAnchor, reservePieces, initialArmyAllowance, setupPlacements } from '../lib/armyPresentation';
 import './Board3D.css';
@@ -201,7 +202,11 @@ export default function Board3D(props: Props) {
     const rifleGeo=merge([new THREE.BoxGeometry(2.3,2.8,8).translate(6,-3,14),cylinder(.8,.9,18,6,-3,24)]);
     const unitGeometries=[baseGeo,bodyGeo,headGeo,helmetGeo,rifleGeo];
     const unitMaterials=[material('#ffffff',.5,.32),material('#ffffff',.32,.38),material('#dbb58a',.08,.52),material('#ffffff',.52,.28),material('#302e28',.55,.38)];
-    const cannonBarrelGeo=merge([new THREE.CylinderGeometry(2.8,3.5,20,10).rotateX(.2).translate(0,1,12),new THREE.TorusGeometry(3.15,.65,4,10).rotateX(Math.PI/2+.2).translate(0,10.7,14)]);
+    // The original barrel mesh is authored in Blender and kept as a small,
+    // instanced triangle mesh for every territory and reserve cannon.
+    const cannonBarrelGeo=keep(new THREE.BufferGeometry());
+    cannonBarrelGeo.setAttribute('position',new THREE.Float32BufferAttribute(cannonBarrel.positions,3));
+    cannonBarrelGeo.setIndex(cannonBarrel.indices);cannonBarrelGeo.computeVertexNormals();
     const cannonCarriageGeo=merge([new THREE.BoxGeometry(8,14,4).translate(0,-2,6),new THREE.BoxGeometry(4,15,3).translate(0,-10,3)]);
     const cannonWheelGeo=merge([-6,6].map(x => new THREE.CylinderGeometry(5,5,2,10).rotateZ(Math.PI/2).translate(x,-3,5)));
     const cannonGeometries=[cannonBarrelGeo,cannonCarriageGeo,cannonWheelGeo];

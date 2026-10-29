@@ -113,6 +113,7 @@ test('real multiplayer: legal origins and targets, truthful previews, cancel, pe
   await select(page, destination);
   await expect(page.getByRole('button', { name: 'Roll for battle', exact: true })).toBeEnabled();
   await expect(page.getByTestId('action-preview')).toContainText('ties defend');
+  await expect(page.getByTestId('action-preview')).toContainText(/\d+% chance to remove a defender this roll/);
   if (Math.abs(TERRITORY_BY_ID[destination].x - source.x) < 550) await expect(page.getByTestId('board-route-preview')).toBeVisible();
   await page.screenshot({ path: '/tmp/risk-tactical-desktop.png' });
   await info.attach('Board-first tactical route', { path: '/tmp/risk-tactical-desktop.png', contentType: 'image/png' });
@@ -224,6 +225,29 @@ test('mobile: optional phase help dismisses and reopens, contextual rules and co
     expect(gameActions).toEqual([]);
     const overflow = await page.evaluate(() => ({ x: document.documentElement.scrollWidth - innerWidth, y: document.documentElement.scrollHeight - innerHeight }));
     expect(overflow.x).toBeLessThanOrEqual(1); expect(overflow.y).toBeLessThanOrEqual(1);
+    expect(errors).toEqual([]);
+  } finally { await context.close(); }
+});
+
+test('phone battle preview updates exact one-roll odds when dice change', async ({ browser, request, baseURL }, info) => {
+  const { actor, state } = await humanRoom(request);
+  const initial = state.game!;
+  const source = TERRITORIES.find(item => initial.territories[item.id].owner === actor.playerId && item.neighbors.some(id => initial.territories[id].owner !== actor.playerId))!;
+  const started = await command(request, 'game:action', { id: randomBytes(16).toString('hex'), revision: state.revision, action: { type: 'deploy', territory: source.id, count: initial.reinforcements } }, actor);
+  const target = source.neighbors.find(id => started.state!.game!.territories[id].owner !== actor.playerId)!;
+  const context = await browser.newContext({ baseURL, viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  try {
+    const page = await context.newPage(), errors = pageErrors(page);
+    await openSeat(page, actor); await select(page, source.id); await select(page, target);
+    const preview = page.getByTestId('action-preview');
+    await page.getByRole('button', { name: '1 attacking die', exact: true }).tap();
+    const expected = started.state!.game!.territories[target].armies >= 2 ? '25%' : '42%';
+    await expect(preview).toContainText(`${expected} chance to remove a defender this roll`);
+    const box = await preview.boundingBox();
+    expect(box).not.toBeNull(); expect(box!.x).toBeGreaterThanOrEqual(0); expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+    expect(box!.y).toBeGreaterThanOrEqual(0); expect(box!.y + box!.height).toBeLessThanOrEqual(844);
+    await page.screenshot({ path: '/tmp/risk-battle-odds-mobile.png' });
+    await info.attach('Mobile one-roll odds', { path: '/tmp/risk-battle-odds-mobile.png', contentType: 'image/png' });
     expect(errors).toEqual([]);
   } finally { await context.close(); }
 });

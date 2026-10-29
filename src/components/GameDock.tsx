@@ -3,6 +3,7 @@ import { ArrowRight, CircleHelp, Dice1, Dice2, Dice3, Flag, Layers3, Minus, Plus
 import { nextTradeValue } from '../../shared/game';
 import type { GameAction, GameState, Player } from '../../shared/types';
 import { TERRITORY_BY_ID } from '../../shared/world';
+import { defenderLossChance } from '../lib/combatOdds';
 import './GameDock.css';
 
 interface GameDockProps {
@@ -124,7 +125,7 @@ export default function GameDock({ game, me, selected, target, myTurn, pending, 
   if (canDeploy && origin) actionPreview = `After deploy · ${origin.armies + actual} armies here · ${game.reinforcements - actual} in reserve`;
   else if (canOccupy && fromState && toState) actionPreview = `After advance · ${fromState.armies - actual} left behind · ${toState.armies + actual} at destination`;
   else if (canFortify && fromState && toState) actionPreview = `After move · ${fromState.armies - actual} left behind · ${toState.armies + actual} at destination`;
-  else if (canAttack && destination) actionPreview = `${actualDice} attack ${actualDice === 1 ? 'die' : 'dice'} vs ${Math.min(2, destination.armies)} defense · ties defend · leave 1 behind`;
+  else if (canAttack && destination) actionPreview = `${actualDice} attack ${actualDice === 1 ? 'die' : 'dice'} vs ${Math.min(2, destination.armies)} defense · ties defend · ${Math.round(defenderLossChance(actualDice, Math.min(2, destination.armies)) * 100)}% chance to remove a defender this roll · leave 1 behind`;
 
   return <aside className={`cdock cdock-active cdock-${game.phase}${mustTrade ? ' cdock-trade-required' : ''}`} aria-label="Turn controls" aria-busy={pending}>
     {showFirstTurnHelp && !selected && onHint && <div className="cdock-first-guide" data-testid="first-turn-guide"><span>First turn?</span><button type="button" onClick={onHint} aria-label="Show legal moves"><CircleHelp size={16}/>Show legal moves</button><button type="button" aria-label="Dismiss first-turn guide" onClick={onDismissFirstTurnHelp}><X size={16}/></button></div>}

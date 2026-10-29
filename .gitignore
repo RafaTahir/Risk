@@ -13,3 +13,6 @@ dist-worker/
 .wrangler/
 
 dist-sites/
+
+# Blender creates versioned backups beside editable source assets.
+tools/blender/source/*.blend1
